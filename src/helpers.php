@@ -31,7 +31,10 @@ function public_url($path = '') {
 }
 
 function sanitize($input) {
-    return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+    if (is_array($input)) {
+        return array_map('sanitize', $input);
+    }
+    return trim($input);
 }
 
 function format_hours($h) {
@@ -60,4 +63,32 @@ function redirect_with_message($url, $status, $message) {
     $q = http_build_query(['status' => $status, 'message' => $message]);
     redirect($url . (strpos($url, '?') === false ? '?' : '&') . $q);
 }
+
+/**
+ * .env dosyasındaki değişkenleri yükler
+ */
+function loadEnv($path) {
+    if (!file_exists($path)) {
+        return false;
+    }
+
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+
+        list($name, $value) = explode('=', $line, 2);
+        $name = trim($name);
+        $value = trim($value);
+
+        if (!array_key_exists($name, $_SERVER) && !array_key_exists($name, $_ENV)) {
+            putenv(sprintf('%s=%s', $name, $value));
+            $_ENV[$name] = $value;
+            $_SERVER[$name] = $value;
+        }
+    }
+    return true;
+}
+
+// .env dosyasını yükle
+loadEnv(__DIR__ . '/../.env');
 ?>

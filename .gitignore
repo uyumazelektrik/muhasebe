@@ -9,3 +9,5 @@ config/db.php
 /node_modules/
 .DS_Store
 Thumbs.db
+.env
+C:\Users\USER\.gemini\antigravity\brain\

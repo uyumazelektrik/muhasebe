@@ -11,19 +11,16 @@ if (strlen($query) < 2) {
 }
 
 try {
-    // Önce tam barkod eşleşmesi, yoksa isim araması
-    $stmt = $pdo->prepare("SELECT urun_adi, barcode, satis_fiyat, miktar, birim, kritik_esik FROM stoklar WHERE barcode = ? LIMIT 1");
-    $stmt->execute([$query]);
-    $item = $stmt->fetch();
+    $items = [];
+    
+    // Hem barkodda hem isimde LIKE araması yap (Kısmi eşleşme için)
+    // Önce barkod başlangıcına göre ara
+    $stmt = $pdo->prepare("SELECT urun_adi, barcode, satis_fiyat, miktar, birim, kritik_esik, gorsel FROM stoklar WHERE barcode LIKE ? OR urun_adi LIKE ? LIMIT 5");
+    $stmt->execute([$query . "%", "%" . $query . "%"]);
+    $items = $stmt->fetchAll();
 
-    if (!$item) {
-        $stmt = $pdo->prepare("SELECT urun_adi, barcode, satis_fiyat, miktar, birim, kritik_esik FROM stoklar WHERE urun_adi LIKE ? LIMIT 1");
-        $stmt->execute(["%$query%"]);
-        $item = $stmt->fetch();
-    }
-
-    if ($item) {
-        echo json_encode(['status' => 'success', 'item' => $item]);
+    if (!empty($items)) {
+        echo json_encode(['status' => 'success', 'items' => $items]);
     } else {
         echo json_encode(['status' => 'not_found']);
     }

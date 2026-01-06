@@ -65,16 +65,38 @@ Bu fazda dış dünyaya açılan güvenli kapılar ve personelin hızlı işlem 
 
 ---
 
-## 📂 Güncel Veritabanı Şeması
+## 6. Faz: Gemini AI Entegrasyonu ve Akıllı Stok Yönetimi - [x]
 
-### `customers` (Dış Paylaşım Tablosu)
+Bu fazda sisteme yapay zeka yetenekleri kazandırılmış ve kullanıcı deneyimi en üst seviyeye taşınmıştır.
+
+### 🛠 Teknik Değişiklikler
+- **Gemini AI Vision API:** Fotoğraf üzerinden ürün tanımlama, barkod okuma ve veritabanı ile akıllı eşleştirme.
+- **Model Fallback Sistemi:** `gemini-2.5-flash`, `gemini-2.0-flash` gibi modeller arasında otomatik geçiş ile kesintisiz hizmet.
+- **Görsel Veri Yönetimi:** Ürün fotoğraflarının base64 formatında saklanması ve listelenmesi.
+- **Dinamik Arama:** İsim ve barkod üzerinden kısmi (LIKE) eşleşme ile canlı sonuç listeleme.
+
+### 📋 Tamamlananlar
+- [x] **AI Ürün Tanıma:** Kameradan çekilen ürün fotoğrafıyla otomatik isim, barkod ve açıklama çıkarma.
+- [x] **Akıllı Eşleştirme:** AI'nın tanımladığı ürünün veritabanındaki benzerleriyle (ID, İsim veya Barkod) eşleştirilmesi.
+- [x] **Çoklu Seçim Ekranı:** Tam eşleşme sağlanamadığında kullanıcıya benzer ürünleri (fotoğraflı) listeleyip seçtirme.
+- [x] **Modern Fiyat Sorgulama:** Yenilenmiş, premium tasarımlı, görsel destekli "Fiyat Gör" sayfası.
+- [x] **Kaynak Takibi:** Ürünlerin sisteme AI ile mi yoksa Manuel mi eklendiğinin takibi.
+- [x] **Karakter Kodlama Düzeltmesi:** Türkçe karakter ve özel sembol (`'`) sorunlarının tüm sistemde giderilmesi.
+
+---
+
+## 📂 Güncel Veritabanı Şeması (Önemli Modüller)
+
+### `stoklar` (Gelişmiş)
 | Kolon | Tip | Açıklama |
 | :--- | :--- | :--- |
 | id | INT | PK |
-| name | VARCHAR | Müşteri Adı |
-| access_token| VARCHAR | Benzersiz erişim kodu |
+| urun_adi | VARCHAR | Ürün Adı (Düzeltilmiş Encoding) |
+| barcode | VARCHAR | Ürün Barkodu |
+| gorsel | TEXT | Ürün Fotoğrafı (Base64) |
+| kaynak | VARCHAR | Ekleme Kaynağı (AI, Manuel, Fatura) |
 
-### `isler` (Gelişmiş)
+### `isler`
 | Kolon | Tip | Açıklama |
 | :--- | :--- | :--- |
 | customer_id | INT | FK to customers |
@@ -87,6 +109,6 @@ Bu fazda dış dünyaya açılan güvenli kapılar ve personelin hızlı işlem 
 ## 🔄 Final İş Akışı (Workflow)
 
 1. **Giriş:** Kullanıcı rolüne göre Dashboard'a yönlendirilir.
-2. **Operasyon:** Personel barkodla fiyat bakıp iş kartı açar, eksi stok olsa bile malzemeyi düşer.
-3. **Admin Kontrolü:** Admin, iş kartını inceler, KDV oranını ve fatura durumunu günceller.
+2. **AI Tarama:** Personel mobil cihazıyla ürünün fotoğrafını çeker, AI ürünü tanır ve stoktaki karşılığını bulur.
+3. **Fiyat Sorgulama:** Barkodun bir kısmı yazıldığında veya AI ile tarandığında ürün görseli ve güncel fiyatı anında listelenir.
 4. **Müşteri Erişimi:** Admin, müşteriye özel `view_account` linkini gönderir; müşteri kendi eksiksiz dökümünü izler.

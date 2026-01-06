@@ -11,10 +11,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $kritik_esik = floatval($_POST['kritik_esik']);
     $alis_fiyat = floatval($_POST['alis_fiyat']);
     $satis_fiyat = floatval($_POST['satis_fiyat']);
+    $gorsel = $_POST['gorsel'] ?? null;
+    $kaynak = sanitize($_POST['kaynak'] ?? 'Manuel');
 
     try {
-        $stmt = $pdo->prepare("UPDATE stoklar SET urun_adi = ?, barcode = ?, birim = ?, miktar = ?, kritik_esik = ?, alis_fiyat = ?, satis_fiyat = ? WHERE id = ?");
-        $stmt->execute([$urun_adi, $barcode, $birim, $miktar, $kritik_esik, $alis_fiyat, $satis_fiyat, $id]);
+        $stmt = $pdo->prepare("UPDATE stoklar SET urun_adi = ?, barcode = ?, birim = ?, miktar = ?, kritik_esik = ?, alis_fiyat = ?, satis_fiyat = ?, gorsel = ?, kaynak = ? WHERE id = ?");
+        $stmt->execute([$urun_adi, $barcode, $birim, $miktar, $kritik_esik, $alis_fiyat, $satis_fiyat, $gorsel, $kaynak, $id]);
         
         redirect_with_message(public_url('inventory'), 'success', 'Ürün başarıyla güncellendi.');
     } catch (PDOException $e) {

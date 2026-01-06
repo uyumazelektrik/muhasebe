@@ -73,6 +73,11 @@ switch ($path) {
         require __DIR__ . '/src/controllers/api/search_stock.php';
         break;
 
+    case 'api/gemini-search':
+        require_login();
+        require __DIR__ . '/src/controllers/api/gemini_search.php';
+        break;
+
     case 'reports':
         require_admin();
         require __DIR__ . '/src/controllers/reports.php';
