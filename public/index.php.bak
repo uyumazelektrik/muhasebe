@@ -1,0 +1,52 @@
+<?php
+require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../src/helpers.php';
+
+// Basit Router
+$request = $_SERVER['REQUEST_URI'];
+$script_name = $_SERVER['SCRIPT_NAME'];
+$dir_name = dirname($script_name);
+
+// Alt klasörde çalışıyorsak path'i temizle
+$path = str_replace($dir_name, '', $request);
+$path = parse_url($path, PHP_URL_PATH);
+$path = trim($path, '/');
+
+// Rota tanımları
+switch ($path) {
+    case '':
+    case 'index.php':
+    case 'dashboard':
+        require __DIR__ . '/../src/controllers/dashboard.php';
+        break;
+        
+    case 'users':
+        require __DIR__ . '/../src/controllers/users.php';
+        break;
+
+    case 'reports':
+        require __DIR__ . '/../src/controllers/reports.php';
+        break;
+
+    case 'settings':
+        require __DIR__ . '/../src/controllers/settings.php';
+        break;
+        
+    case 'api/clock-in':
+        require __DIR__ . '/../src/controllers/api/clock_in.php';
+        break;
+
+    case 'api/add-user':
+        require __DIR__ . '/../src/controllers/api/add_user.php';
+        break;
+        
+    case 'api/delete-log':
+        require __DIR__ . '/../src/controllers/api/delete_log.php';
+        break;
+        
+    default:
+        http_response_code(404);
+        view('404');
+        break;
+}
+?>

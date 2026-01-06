@@ -1,0 +1,11 @@
+config/db.php
+.htaccess
+*.log
+.vscode/
+.idea/
+*.tmp
+*.temp
+/vendor/
+/node_modules/
+.DS_Store
+Thumbs.db
