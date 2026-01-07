@@ -27,7 +27,7 @@ try {
         SUM(miktar * satis_fiyat) as toplam_satis_degeri,
         COUNT(*) as urun_cesidi,
         SUM(miktar) as toplam_miktar
-    FROM stoklar")->fetch();
+    FROM inv_products")->fetch();
 } catch (PDOException $e) {
     $stokOzeti = ['toplam_maliyet' => 0, 'toplam_satis_degeri' => 0, 'urun_cesidi' => 0, 'toplam_miktar' => 0];
 }

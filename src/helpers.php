@@ -24,8 +24,11 @@ function public_url($path = '') {
     $script = $_SERVER['SCRIPT_NAME'];
     $dir = dirname($script);
     
+    // Windows path fix
+    $dir = str_replace('\\', '/', $dir);
+
     // Eğer root'taysak / koyma
-    $base = ($dir == '/' || $dir == '\\') ? '' : $dir;
+    $base = ($dir == '/') ? '' : $dir;
     
     return $protocol . '://' . $host . $base . '/' . ltrim($path, '/');
 }

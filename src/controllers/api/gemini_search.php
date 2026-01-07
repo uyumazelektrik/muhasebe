@@ -30,7 +30,7 @@ $imageData = preg_replace('#^data:image/\w+;base64,#i', '', $imageData);
 // Veritabanındaki mevcut ürünleri çek
 $dbProducts = [];
 try {
-    $stmt = $pdo->query("SELECT id, urun_adi, barcode FROM stoklar");
+    $stmt = $pdo->query("SELECT id, name as urun_adi, barcode FROM inv_products");
     $dbProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     // Hata durumunda boş devam et
@@ -147,7 +147,7 @@ try {
     
     // 1. Eğer Gemini bir veritabanı ID'si döndürmüşse öncelikle onu al
     if ($isMatched && $dbId) {
-        $stmt = $pdo->prepare("SELECT * FROM stoklar WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT *, name as urun_adi, stock_quantity as miktar, unit as birim, satis_fiyat, critical_level as kritik_esik FROM inv_products WHERE id = ? LIMIT 1");
         $stmt->execute([$dbId]);
         $directItem = $stmt->fetch();
         if ($directItem) {
@@ -160,7 +160,7 @@ try {
     
     // Barkod ile ara
     if ($barcode) {
-        $stmt = $pdo->prepare("SELECT * FROM stoklar WHERE barcode = ? AND id NOT IN (" . (empty($searchIds) ? '0' : implode(',', $searchIds)) . ")");
+        $stmt = $pdo->prepare("SELECT *, name as urun_adi, stock_quantity as miktar, unit as birim, satis_fiyat, critical_level as kritik_esik FROM inv_products WHERE barcode = ? AND id NOT IN (" . (empty($searchIds) ? '0' : implode(',', $searchIds)) . ")");
         $stmt->execute([$barcode]);
         $foundByBarcode = $stmt->fetchAll();
         $items = array_merge($items, $foundByBarcode);
@@ -172,7 +172,7 @@ try {
         // İsimdeki kelimeleri parçalayarak daha geniş bir arama yapabiliriz
         $searchWords = explode(' ', $productName);
         $likeQuery = "%" . $productName . "%";
-        $stmt = $pdo->prepare("SELECT * FROM stoklar WHERE urun_adi LIKE ? AND id NOT IN (" . (empty($searchIds) ? '0' : implode(',', $searchIds)) . ") LIMIT 5");
+        $stmt = $pdo->prepare("SELECT *, name as urun_adi, stock_quantity as miktar, unit as birim, satis_fiyat, critical_level as kritik_esik FROM inv_products WHERE name LIKE ? AND id NOT IN (" . (empty($searchIds) ? '0' : implode(',', $searchIds)) . ") LIMIT 5");
         $stmt->execute([$likeQuery]);
         $foundByName = $stmt->fetchAll();
         $items = array_merge($items, $foundByName);

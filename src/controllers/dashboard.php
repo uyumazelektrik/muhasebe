@@ -55,7 +55,7 @@ try {
     $stmt->execute($jobParams);
     $jobStats = $stmt->fetch();
     
-    $kritikStoklar = $pdo->query("SELECT * FROM stoklar WHERE miktar <= kritik_esik ORDER BY miktar ASC")->fetchAll();
+    $kritikStoklar = $pdo->query("SELECT * FROM inv_products WHERE stock_quantity <= critical_level ORDER BY stock_quantity ASC")->fetchAll();
     
     $sarfSql = "SELECT st.urun_adi, SUM(s.kullanilan_miktar) as toplam, st.birim FROM is_sarfiyat s JOIN stoklar st ON s.stok_id = st.id";
     $sarfParams = [];

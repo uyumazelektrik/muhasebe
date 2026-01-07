@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $kaynak = sanitize($_POST['kaynak'] ?? 'Manuel');
 
     try {
-        $stmt = $pdo->prepare("UPDATE stoklar SET urun_adi = ?, barcode = ?, birim = ?, miktar = ?, kritik_esik = ?, alis_fiyat = ?, satis_fiyat = ?, gorsel = ?, kaynak = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE inv_products SET name = ?, barcode = ?, unit = ?, stock_quantity = ?, critical_level = ?, avg_cost = ?, satis_fiyat = ?, gorsel = ?, kaynak = ? WHERE id = ?");
         $stmt->execute([$urun_adi, $barcode, $birim, $miktar, $kritik_esik, $alis_fiyat, $satis_fiyat, $gorsel, $kaynak, $id]);
         
         redirect_with_message(public_url('inventory'), 'success', 'Ürün başarıyla güncellendi.');

@@ -1,114 +1,90 @@
-# Ön Muhasebe & Stok Takip Sistemi Entegrasyon Planı
+# Akıllı Ön Muhasebe & AI Destekli Stok Yönetim Sistemi
 
-Bu döküman, mevcut personel takip sistemine entegre edilen stok yönetimi, iş takibi ve finansal raporlama modüllerinin detaylarını içerir. Proje başarıyla finalize edilmiştir.
+Bu proje, geleneksel personel takip sistemini; yapay zeka (Gemini AI) destekli fatura işleme, akıllı stok takibi ve dinamik cari yönetim modülleriyle birleştiren kapsamlı bir ERP çözümüdür.
 
-## 1. Kullanılan Teknolojiler
-* **Backend:** PHP 8.x (PDO)
-* **Frontend:** Tailwind CSS (Modern UI/UX)
-* **Veritabanı:** MySQL
-* **Güvenlik:** Role-Based Access Control (Admin/Personel)
+## 🚀 Proje Amacı
+Sistemin temel amacı, işletmelerin manuel veri girişi yükünü azaltmak, hata payını minimize etmek ve stok/cari süreçlerini yapay zeka yardımıyla otomatize etmektir. Özellikle fatura görsellerinden otomatik veri çıkarma (OCR) ve ürün eşleştirme özellikleri projenin kalbini oluşturur.
 
 ---
 
-## 2. Faz Planlaması (Tamamlandı)
+## 📂 Dizin Yapısı
+Proje, modüler ve MVC yapısına yakın bir şekilde organize edilmiştir:
 
-### Faz 1: Stok Altyapısı (Temel) - [x]
-- [x] Veritabanı tablolarının (stoklar, isler, is_sarfiyat) oluşturulması.
-- [x] Stok Giriş/Listeleme ekranı (Tailwind CSS ile responsive tablo).
-- [x] Birim tanımlama (Adet, Metre, KG) ve kritik stok seviyesi kontrolü.
-- [x] Stok Ekleme, Düzenleme ve Silme fonksiyonları.
-
-### Faz 2: Operasyon ve İş Yönetimi - [x]
-- [x] Müşteri kayıtları ve iş (proje) oluşturma modülü.
-- [x] **Sarfiyat Girişi:** Personelin bir işe malzeme eklemesi ve stoktan otomatik düşüş.
-- [x] İş bazlı maliyet hesaplama algoritması (Otomatik toplam tutar güncelleme).
-
-### Faz 3: Finans ve Yetkilendirme - [x]
-- [x] **Yetki Kontrolü:** Personel için kritik mali verilerin (Alış fiyatı, kâr) gizlenmesi.
-- [x] **Cari Takip:** Müşteri bazlı ciro raporları ve ödeme durumları.
-- [x] **Stok Finansal Analizi:** Toplam stok maliyeti ve potansiyel satış değeri analizleri.
-- [x] **Dashboard:** Kritik stok uyarıları, en çok sarf edilen ürünler ve mali özet kartları.
-
----
-
-## 4. Faz: Oturum ve Rol Bazlı Erişim Kontrolü (RBAC) - [x]
-
-Bu fazda sistemin "kim, neyi, ne kadar görebilir?" kuralları kodlanmıştır.
-
-### 🛠 Teknik Değişiklikler
-- **Oturum Yönetimi:** `session_start()` kontrolü ile `auth.php` üzerinden rol doğrulaması.
-- **Data Isolation (Veri İzolasyonu):** SQL sorgularına dinamik `WHERE` koşulları eklenmesi.
-- **Stok Esnekliği:** Personel için stok kontrolü "hard-stop" yerine "uyarı" seviyesine çekilmiştir.
-
-### 📋 Tamamlananlar
-- [x] **Login & Session:** `users` tablosuna göre `admin` veya `personel` yönlendirmesi.
-- [x] **Personel Kısıtlı Ekranı:** Personelin sadece kendi eklediği iş kartlarını ve kendi maaş/mesai bilgilerini görmesi.
-- [x] **Gizlilik Filtresi:** Personel ekranlarından `alis_fiyati` sütunu kaldırıldı.
-- [x] **Yönetici Yetki Sınırı:** Stok ekleme/düzenleme yetkisi Admin'e tanımlandı.
+```text
+proje/
+├── assets/             # CSS (Tailwind), JS ve Medya dosyaları
+├── config/             # Veritabanı bağlantı yapılandırması (db.php)
+├── database/           # SQL şemaları ve güncelleme betikleri
+├── modules/            # Özelleşmiş iş modülleri (Stok, İş Takibi, Finans)
+├── public/             # Dışarıya açık sayfalar (Müşteri görüntüleme vb.)
+├── src/                # Çekirdek PHP mantığı
+│   ├── Controllers/    # Rotaları yöneten kontrolörler (InvoiceController vb.)
+│   ├── Models/         # Veritabanı modelleri (ProductModel, EntityModel vb.)
+│   ├── Services/       # Dış servis entegrasyonları (GeminiService.php)
+│   └── helpers.php     # Global yardımcı fonksiyonlar
+├── views/              # Arayüz dosyaları (HTML/PHP Karışık)
+│   ├── invoice/        # Fatura yükleme ve doğrulama ekranları
+│   ├── entities/       # Cari yönetim ekranları
+│   └── layout/         # Header/Footer gibi ortak şablonlar
+├── .env                # API Anahtarları ve Hassas Ayarlar
+├── index.php           # Ana Router (Yönlendirici)
+└── readme.md           # Sistem dökümantasyonu
+```
 
 ---
 
-## 5. Faz: Müşteri Paneli, Barkod ve Finansal Detaylar - [x]
+## 🗄️ Veritabanı Yapısı
+Sistem, ilişkisel bir MySQL veritabanı üzerinde çalışır. Temel tablolar şunlardır:
 
-Bu fazda dış dünyaya açılan güvenli kapılar ve personelin hızlı işlem yapabileceği araçlar kurulmuştur.
+### 1. Stok ve Hareketler
+*   **`inv_products`**: Ürünlerin adı, barkodu, birimi, ortalama maliyeti, son alış fiyatı ve stok miktarı bilgisini tutar.
+*   **`inv_movements`**: Her türlü stok giriş-çıkış hareketini (fatura, sarfiyat, iade) `tax_rate` ve `tax_amount` detaylarıyla kaydeder.
+*   **`inv_mapping`**: Yapay zekanın faturada okuduğu metinler ile stok kartları arasındaki eşleşmeleri hafızaya alır.
 
-### 🛠 Teknik Değişiklikler
-- **Public URL Sistemi:** Müşteriler için `access_token` (GUID) tabanlı giriş gerektirmeyen şık bir görünüm sayfası.
-- **Fiyat Sorgulama API:** Sadece barkod veya isimle çalışan, maliyet verisi içermeyen hızlı sorgu ucu.
-- **Gelişmiş Fatura Takibi:** Veritabanına `KDV` ve `Fatura_Durumu` sütunları işlendi.
+### 2. Cari ve Finans
+*   **`inv_entities`**: Tedarikçiler, müşteriler ve personel bilgilerini tutar. `balance` (cari bakiye) bilgisini anlık günceller.
+*   **`inv_entity_transactions`**: Cari ekstre kayıtlarını tutar. Fatura bazlı borç/alacak hareketlerini `tax_total` ve `discount_total` bazlı belgelerle saklar.
 
-### 📋 Tamamlananlar
-- [x] **Müşteri Cari Sayfası:** Müşteriye özel bağımsız link (`public/view_account.php?token=xyz`).
-- [x] **Hızlı Fiyat Gör:** Personel için barkod okutulduğunda **Sadece Satış Fiyatı** dönen modül.
-- [x] **Personel Finans:** Personelin kendi `maas` ve `ödeme` dökümünü görebileceği profil sekmesi.
-- [x] **KDV Entegrasyonu:** İş kartlarına %1, %10, %20 seçenekli KDV hesaplama modülü.
-
----
-
-## 6. Faz: Gemini AI Entegrasyonu ve Akıllı Stok Yönetimi - [x]
-
-Bu fazda sisteme yapay zeka yetenekleri kazandırılmış ve kullanıcı deneyimi en üst seviyeye taşınmıştır.
-
-### 🛠 Teknik Değişiklikler
-- **Gemini AI Vision API:** Fotoğraf üzerinden ürün tanımlama, barkod okuma ve veritabanı ile akıllı eşleştirme.
-- **Model Fallback Sistemi:** `gemini-2.5-flash`, `gemini-2.0-flash` gibi modeller arasında otomatik geçiş ile kesintisiz hizmet.
-- **Görsel Veri Yönetimi:** Ürün fotoğraflarının base64 formatında saklanması ve listelenmesi.
-- **Dinamik Arama:** İsim ve barkod üzerinden kısmi (LIKE) eşleşme ile canlı sonuç listeleme.
-
-### 📋 Tamamlananlar
-- [x] **AI Ürün Tanıma:** Kameradan çekilen ürün fotoğrafıyla otomatik isim, barkod ve açıklama çıkarma.
-- [x] **Akıllı Eşleştirme:** AI'nın tanımladığı ürünün veritabanındaki benzerleriyle (ID, İsim veya Barkod) eşleştirilmesi.
-- [x] **Çoklu Seçim Ekranı:** Tam eşleşme sağlanamadığında kullanıcıya benzer ürünleri (fotoğraflı) listeleyip seçtirme.
-- [x] **Modern Fiyat Sorgulama:** Yenilenmiş, premium tasarımlı, görsel destekli "Fiyat Gör" sayfası.
-- [x] **Kaynak Takibi:** Ürünlerin sisteme AI ile mi yoksa Manuel mi eklendiğinin takibi.
-- [x] **Karakter Kodlama Düzeltmesi:** Türkçe karakter ve özel sembol (`'`) sorunlarının tüm sistemde giderilmesi.
+### 3. Personel ve Devamlılık
+*   **`users`**: Kullanıcı rolleri (Admin/Personel) ve temel bilgiler.
+*   **`attendance`**: Giriş-çıkış saatleri, mesai ve gecikme takibi.
 
 ---
 
-## 📂 Güncel Veritabanı Şeması (Önemli Modüller)
+## 🔄 İş Akışı ve Çalışma Mantığı
 
-### `stoklar` (Gelişmiş)
-| Kolon | Tip | Açıklama |
-| :--- | :--- | :--- |
-| id | INT | PK |
-| urun_adi | VARCHAR | Ürün Adı (Düzeltilmiş Encoding) |
-| barcode | VARCHAR | Ürün Barkodu |
-| gorsel | TEXT | Ürün Fotoğrafı (Base64) |
-| kaynak | VARCHAR | Ekleme Kaynağı (AI, Manuel, Fatura) |
+### 1. AI Destekli Fatura İşleme (OCR)
+1.  **Yükleme:** Kullanıcı bir fatura fotoğrafı veya PDF'i sisteme yükler.
+2.  **Analiz (Gemini AI):** `GeminiService`, görseli analiz ederek faturan tüm kalemlerini (Miktar, Birim, İskontolu Net Fiyat, KDV Oranı) JSON formatında çıkarır.
+3.  **Akıllı Eşleştirme:** Sistem, faturadaki her bir satırı veritabanındaki mevcut stok kartlarıyla (`mapping` hafızası veya fuzzy search ile) eşleştirmeye çalışır.
+4.  **Doğrulama:** Kullanıcı ekranda yapay zekanın çıkardığı verileri ve eşleşmeleri kontrol eder, gerekirse düzeltir.
+5.  **Kayıt:** Onaylandığında;
+    *   Stok miktarları güncellenir.
+    *   Ağırlıklı ortalama maliyet (AVCO) otomatik yeniden hesaplanır.
+    *   İlgili cari karta (Tedarikçi) borç olarak işlenir.
+    *   Stok hareket günlüğü (Movements) oluşturulur.
 
-### `isler`
-| Kolon | Tip | Açıklama |
-| :--- | :--- | :--- |
-| customer_id | INT | FK to customers |
-| topam_tutar | DECIMAL | Vergisiz Matrah |
-| tax_rate | DECIMAL | KDV Oranı (%1, %10, %20) |
-| invoice_status| ENUM | Kesilmedi, Kesildi |
+### 2. Stok ve Operasyon
+*   **Sarfiyat Girişi:** Personel sahada kullandığı malzemeleri iş kartına eklediğinde stoktan anlık düşüş yapılır ve işin maliyeti güncellenir.
+*   **Kritik Stok Uyarıları:** Seviyenin altına düşen ürünler Dashboard üzerinde yöneticiye raporlanır.
 
 ---
 
-## 🔄 Final İş Akışı (Workflow)
+## 🛠 Teknik Detaylar
+*   **AI Engine:** Google Gemini 1.5 Pro / Flash (Çoklu model fallback yapısı).
+*   **Frontend:** Modern ve responsive tasarım için Tailwind CSS & Material Symbols.
+*   **Güvenlik:** Role-Based Access Control (RBAC). Admin tüm maliyetleri görürken, personel sadece satış fiyatlarını ve operasyonel verileri görür.
+*   **Hata Yönetimi:** API kesintilerine karşı fallback modelleri ve detaylı debug paneli entegrasyonu.
 
-1. **Giriş:** Kullanıcı rolüne göre Dashboard'a yönlendirilir.
-2. **AI Tarama:** Personel mobil cihazıyla ürünün fotoğrafını çeker, AI ürünü tanır ve stoktaki karşılığını bulur.
-3. **Fiyat Sorgulama:** Barkodun bir kısmı yazıldığında veya AI ile tarandığında ürün görseli ve güncel fiyatı anında listelenir.
-4. **Müşteri Erişimi:** Admin, müşteriye özel `view_account` linkini gönderir; müşteri kendi eksiksiz dökümünü izler.
+---
+
+## 🎯 Temel Özellikler
+*   ✅ Görselden %99 doğrulukla fatura kalemlerini okuma.
+*   ✅ İskonto ve KDV hesaplamalarının otomatik yapılması.
+*   ✅ Ağırlıklı Ortalama Maliyet (AVCO) takibi.
+*   ✅ Personel maaş, mesai ve finansal profil yönetimi.
+*   ✅ Müşterilere özel "Cari Ekstre" paylaşım linkleri (Public Token).
+*   ✅ Barkod okutarak hızlı fiyat ve stok sorgulama.
+
+---
+*Bu sistem Sürekli Geliştirme (CI) aşamasındadır ve yeni nesil AI yetenekleriyle güncellenmeye devam etmektedir.*

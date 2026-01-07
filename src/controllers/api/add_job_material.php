@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->beginTransaction();
 
         // 1. Stok bilgisini al
-        $stmt = $pdo->prepare("SELECT satis_fiyat, miktar, urun_adi FROM stoklar WHERE id = ? FOR UPDATE");
+        $stmt = $pdo->prepare("SELECT satis_fiyat, stock_quantity as miktar, name as urun_adi FROM inv_products WHERE id = ? FOR UPDATE");
         $stmt->execute([$stok_id]);
         $stok = $stmt->fetch();
 
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$is_id, $stok_id, $kullanilan_miktar, $birim_fiyat]);
 
         // 3. Stoktan düş
-        $stmt = $pdo->prepare("UPDATE stoklar SET miktar = miktar - ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity - ? WHERE id = ?");
         $stmt->execute([$kullanilan_miktar, $stok_id]);
 
         // 4. İş tutarını güncelle

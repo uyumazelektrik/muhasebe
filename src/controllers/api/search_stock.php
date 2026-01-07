@@ -15,7 +15,7 @@ try {
     
     // Hem barkodda hem isimde LIKE araması yap (Kısmi eşleşme için)
     // Önce barkod başlangıcına göre ara
-    $stmt = $pdo->prepare("SELECT urun_adi, barcode, satis_fiyat, miktar, birim, kritik_esik, gorsel FROM stoklar WHERE barcode LIKE ? OR urun_adi LIKE ? LIMIT 5");
+    $stmt = $pdo->prepare("SELECT id, name as urun_adi, barcode, satis_fiyat, stock_quantity as miktar, unit as birim, critical_level as kritik_esik, gorsel FROM inv_products WHERE barcode LIKE ? OR name LIKE ? LIMIT 5");
     $stmt->execute([$query . "%", "%" . $query . "%"]);
     $items = $stmt->fetchAll();
 

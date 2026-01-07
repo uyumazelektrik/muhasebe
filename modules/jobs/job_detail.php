@@ -26,7 +26,7 @@ $stmt->execute([$jobId]);
 $materials = $stmt->fetchAll();
 
 // Mevcut stokları çek (Dropdown için)
-$stocks = $pdo->query("SELECT id, urun_adi, birim, miktar, satis_fiyat FROM stoklar WHERE miktar > 0 ORDER BY urun_adi ASC")->fetchAll();
+$stocks = $pdo->query("SELECT id, name as urun_adi, unit as birim, stock_quantity as miktar, satis_fiyat FROM inv_products WHERE stock_quantity > 0 ORDER BY name ASC")->fetchAll();
 
 $pageTitle = "İş Detayı - " . $job['musteri_adi'];
 include __DIR__ . '/../../views/layout/header.php';

@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $kaynak = sanitize($_POST['kaynak'] ?? 'Manuel');
 
     try {
-        $stmt = $pdo->prepare("INSERT INTO stoklar (urun_adi, barcode, birim, miktar, kritik_esik, alis_fiyat, satis_fiyat, gorsel, kaynak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO inv_products (name, barcode, unit, stock_quantity, critical_level, avg_cost, satis_fiyat, gorsel, kaynak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$urun_adi, $barcode, $birim, $miktar, $kritik_esik, $alis_fiyat, $satis_fiyat, $gorsel, $kaynak]);
         
         redirect_with_message(public_url('inventory'), 'success', 'Ürün başarıyla eklendi.');

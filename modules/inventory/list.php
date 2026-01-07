@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../src/helpers.php';
 
 // Stokları çek
 try {
-    $stmt = $pdo->query("SELECT * FROM stoklar ORDER BY urun_adi ASC");
+    $stmt = $pdo->query("SELECT *, name as urun_adi, unit as birim, stock_quantity as miktar, avg_cost as alis_fiyat, critical_level as kritik_esik FROM inv_products ORDER BY name ASC");
     $stocks = $stmt->fetchAll();
 } catch (PDOException $e) {
     $stocks = [];

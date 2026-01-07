@@ -98,6 +98,10 @@
             <span class="material-symbols-outlined text-[24px] group-hover:text-amber-500 transition-colors">inventory_2</span>
             <span class="text-sm font-medium leading-normal">Stok Takibi</span>
         </a>
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#9da6b9] hover:bg-white/5 hover:text-white transition-colors group" href="<?php echo public_url('invoice/upload'); ?>">
+            <span class="material-symbols-outlined text-[24px] group-hover:text-amber-500 transition-colors">receipt_long</span>
+            <span class="text-sm font-medium leading-normal">Fatura İşle</span>
+        </a>
         <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#9da6b9] hover:bg-white/5 hover:text-white transition-colors group" href="<?php echo public_url('jobs'); ?>">
             <span class="material-symbols-outlined text-[24px] group-hover:text-blue-500 transition-colors">engineering</span>
             <span class="text-sm font-medium leading-normal">İş Takibi</span>
@@ -107,6 +111,10 @@
         <div class="px-3 mt-4 mb-2">
             <p class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Finans</p>
         </div>
+        <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#9da6b9] hover:bg-white/5 hover:text-white transition-colors group" href="<?php echo public_url('entities'); ?>">
+            <span class="material-symbols-outlined text-[24px] group-hover:text-purple-500 transition-colors">account_balance_wallet</span>
+            <span class="text-sm font-medium leading-normal">Cari Hesaplar</span>
+        </a>
         <a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#9da6b9] hover:bg-white/5 hover:text-white transition-colors group" href="<?php echo public_url('finance-reports'); ?>">
             <span class="material-symbols-outlined text-[24px] group-hover:text-emerald-500 transition-colors">account_balance</span>
             <span class="text-sm font-medium leading-normal">Finansal Raporlar</span>

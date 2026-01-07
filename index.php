@@ -7,9 +7,16 @@ $request = $_SERVER['REQUEST_URI'];
 $script_name = $_SERVER['SCRIPT_NAME'];
 $dir_name = dirname($script_name);
 
+// Windows uyumluluğu: Ters slaşları düzelt
+$dir_name = str_replace('\\', '/', $dir_name);
+
 // Alt klasörde çalışıyorsak path'i temizle
-$path = str_replace($dir_name, '', $request);
-$path = parse_url($path, PHP_URL_PATH);
+// Eğer proje root'da değilse (örn: /proje), bu kısmı request'ten çıkar
+if ($dir_name !== '/') {
+    $request = str_replace($dir_name, '', $request);
+}
+
+$path = parse_url($request, PHP_URL_PATH);
 $path = trim($path, '/');
 
 // Rota tanımları
@@ -216,6 +223,139 @@ switch ($path) {
     case 'api/update-job-status':
         require_login();
         require __DIR__ . '/src/controllers/api/update_job_status.php';
+        break;
+
+    // --- FAZ 2-5: Akıllı Stok Yönetimi Rotaları ---
+    
+    case 'invoice/upload':
+        require_login();
+        require __DIR__ . '/views/invoice/upload.php';
+        break;
+
+    case 'invoice/analyze':
+        require_login();
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['invoice_image'])) {
+            require_once __DIR__ . '/src/Services/GeminiService.php';
+            require_once __DIR__ . '/src/Models/EntityModel.php';
+            
+            $apiKey = $_ENV['GEMINI_API_KEY'] ?? ''; 
+            $service = new GeminiService($apiKey);
+            
+            $tmpPath = $_FILES['invoice_image']['tmp_name'];
+            try {
+                $invoiceData = $service->processInvoice($tmpPath);
+
+                if ($invoiceData) {
+                    // Enrich data with DB matches
+                    require_once __DIR__ . '/src/Models/ProductModel.php';
+                    $productModel = new ProductModel($pdo);
+                    $entityModel = new EntityModel($pdo);
+
+                    foreach ($invoiceData['items'] as &$item) {
+                        if ($item['type'] === 'STOK') {
+                            $match = $productModel->findBestMatch($item['name']);
+                            if ($match) {
+                                $item['mapped_id'] = $match['id'];
+                                $item['mapped_name'] = $match['name'];
+                                $item['current_stock-unit'] = $match['unit'];
+                                $item['current_avg_cost'] = $match['avg_cost'];
+                            }
+                        }
+                    }
+                    unset($item); // Break reference
+
+                    // --- FAZ 3.1: Cari Bilgi Paneli ---
+                    // Get or create entity to show current balance
+                    $entity = $entityModel->findOrCreate(
+                        $invoiceData['supplier_name'],
+                        $invoiceData['supplier_tax_id'] ?? null,
+                        'supplier'
+                    );
+                    $invoiceData['entity_id'] = $entity['id'];
+                    $invoiceData['current_balance'] = $entity['balance'];
+                    
+                    // Calculate projected balance (if unpaid)
+                    $invoiceData['projected_balance'] = $entity['balance'] - floatval($invoiceData['total_amount']);
+
+                    // View expects $invoiceData, $suppliers, $units
+                    $suppliers = $entityModel->getAll(); // Get all entities (suppliers + staff)
+                    $units = ['Adet', 'Metre', 'Kg', 'Litre', 'Paket', 'Koli', 'M']; // Common units
+                    
+                    require __DIR__ . '/views/invoice/validation.php';
+                } else {
+                     throw new Exception("Boş veri döndü.");
+                }
+            } catch (Exception $e) {
+                redirect_with_message(public_url('invoice/upload'), 'error', 'Hata: ' . $e->getMessage());
+            }
+        } else {
+            redirect('invoice/upload');
+        }
+        break;
+
+    case 'invoice/store':
+        require_login();
+        require_once __DIR__ . '/src/Controllers/InvoiceController.php';
+        $controller = new InvoiceController($pdo); // $pdo config/db.php'den gelir
+        $controller->store();
+        break;
+
+    case 'inventory/detail':
+        require_login();
+        $id = $_GET['id'] ?? 0;
+        require_once __DIR__ . '/src/Controllers/InventoryController.php';
+        $controller = new InventoryController($pdo);
+        $controller->detail($id);
+        break;
+
+    case 'inventory/mapping':
+        require_login();
+        require_once __DIR__ . '/src/Controllers/InventoryController.php';
+        $controller = new InventoryController($pdo);
+        $controller->mappingList();
+        break;
+
+    // --- FAZ 5: Cari Yönetimi Rotaları ---
+    
+    case 'entities':
+    case 'entity/list':
+        require_login();
+        require __DIR__ . '/views/entities/list.php';
+        break;
+
+    case 'entity/statement':
+        require_login();
+        require __DIR__ . '/views/entities/statement.php';
+        break;
+
+    case 'entity/add':
+        require_admin();
+        require __DIR__ . '/views/entities/add.php';
+        break;
+
+    case 'entity/save':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/save_entity.php';
+        break;
+
+    case 'api/transaction-detail':
+        require_login();
+        require __DIR__ . '/src/controllers/api/get_transaction_detail.php';
+        break;
+
+    case 'api/edit-entity-transaction':
+        require_login();
+        require __DIR__ . '/src/controllers/api/edit_entity_transaction.php';
+        break;
+
+    case 'api/delete-entity-transaction':
+        require_login();
+        require __DIR__ . '/src/controllers/api/delete_entity_transaction.php';
+        break;
+
+    case 'entity/edit':
+        require_admin();
+        require __DIR__ . '/views/entities/edit.php';
         break;
         
     default:
