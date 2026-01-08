@@ -43,9 +43,13 @@ try {
          * Ama en garantisi document_no eşleşmesidir.
          */
         $stmtItems = $pdo->prepare("
-            SELECT m.*, p.name as product_name, p.unit 
+            SELECT 
+                m.*, 
+                COALESCE(p.name, ec.name, 'Bilinmeyen Ürün') as product_name, 
+                p.unit 
             FROM inv_movements m
             LEFT JOIN inv_products p ON m.product_id = p.id
+            LEFT JOIN inv_expense_categories ec ON m.expense_category_id = ec.id
             WHERE m.document_no = ? 
             ORDER BY m.id ASC
         ");

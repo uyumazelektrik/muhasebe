@@ -135,6 +135,21 @@ switch ($path) {
         require __DIR__ . '/src/controllers/api/edit_user.php';
         break;
 
+    case 'api/search-expense-categories':
+        require_login();
+        require __DIR__ . '/src/controllers/api/search_expense_categories.php';
+        break;
+
+    case 'api/save-expense-category':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/save_expense_category.php';
+        break;
+
+    case 'api/delete-expense-category':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/delete_expense_category.php';
+        break;
+
     case 'api/update-shifts':
         require_admin();
         require __DIR__ . '/src/controllers/api/update_shifts.php';
@@ -180,6 +195,41 @@ switch ($path) {
         require __DIR__ . '/src/controllers/api/delete_transaction.php';
         break;
 
+    case 'api/save-wallet':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/save_wallet.php';
+        break;
+
+    case 'api/delete-wallet':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/delete_wallet.php';
+        break;
+
+    case 'api/delete-entity':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/delete_entity.php';
+        break;
+
+    case 'api/wallet-transfer':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/wallet_transfer.php';
+        break;
+
+    case 'api/wallet-transaction':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/wallet_transaction.php';
+        break;
+
+    case 'api/save-entity-transaction':
+        require_admin();
+        require __DIR__ . '/src/controllers/api/save_entity_transaction.php';
+        break;
+
+    case 'api/search-entities':
+        require_login();
+        require __DIR__ . '/src/controllers/api/search_entities.php';
+        break;
+        
     case 'api/edit-transaction':
         require_admin();
         require __DIR__ . '/src/controllers/api/edit_transaction.php';
@@ -277,7 +327,11 @@ switch ($path) {
                     // Calculate projected balance (if unpaid)
                     $invoiceData['projected_balance'] = $entity['balance'] - floatval($invoiceData['total_amount']);
 
-                    // View expects $invoiceData, $suppliers, $units
+                    // View expects $invoiceData, $suppliers, $units, $wallets
+                    require_once __DIR__ . '/src/Models/WalletModel.php';
+                    $walletModel = new WalletModel($pdo);
+                    $wallets = $walletModel->getAllActive();
+                    
                     $suppliers = $entityModel->getAll(); // Get all entities (suppliers + staff)
                     $units = ['Adet', 'Metre', 'Kg', 'Litre', 'Paket', 'Koli', 'M']; // Common units
                     
@@ -317,6 +371,16 @@ switch ($path) {
 
     // --- FAZ 5: Cari Yönetimi Rotaları ---
     
+    case 'finance/expense-categories':
+        require_admin();
+        require __DIR__ . '/modules/finance/expense_categories.php';
+        break;
+
+    case 'finance/wallets':
+        require_admin();
+        require __DIR__ . '/modules/finance/wallets.php';
+        break;
+
     case 'entities':
     case 'entity/list':
         require_login();

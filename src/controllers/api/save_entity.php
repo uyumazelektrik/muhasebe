@@ -74,28 +74,27 @@ try {
             }
         }
         
-        // Insert entity
+        // Insert entity (balance is 0 by default, it will be updated via updateAssetBalance)
         $stmt = $pdo->prepare("
-            INSERT INTO inv_entities (name, type, tax_id, phone, email, address, balance) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO inv_entities (name, type, tax_id, phone, email, address) 
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$name, $type, $taxId, $phone, $email, $address, $initialBalance]);
+        $stmt->execute([$name, $type, $taxId, $phone, $email, $address]);
         
         $newEntityId = $pdo->lastInsertId();
         
-        // If there's an initial balance, log it as a transaction
+        // If there's an initial balance, use the new model method to keep all tables in sync
         if ($initialBalance != 0) {
-            $stmt = $pdo->prepare("
-                INSERT INTO inv_entity_transactions (entity_id, type, amount, description, transaction_date) 
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
+            $entityModel->updateAssetBalance(
                 $newEntityId,
-                'diger',
                 $initialBalance,
+                'TL',
+                'diger',
                 'Başlangıç bakiyesi',
-                date('Y-m-d')
-            ]);
+                date('Y-m-d'),
+                null,
+                1.0
+            );
         }
         
         $pdo->commit();

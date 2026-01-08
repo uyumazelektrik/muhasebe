@@ -59,8 +59,39 @@ $suppliers = $suppliers ?? [];
     <form action="<?php echo public_url('invoice/store'); ?>" method="POST" id="invoiceForm">
         <input type="hidden" name="folder_id" value="<?php echo $invoiceData['id'] ?? ''; ?>">
         
-        <!-- Top Bar: Invoice Meta -->
+        <!-- Top Bar: Invoice Meta & Type Selection -->
         <div class="bg-white dark:bg-card-dark rounded-xl shadow-lg border border-gray-100 dark:border-gray-700/50 p-6 mb-6">
+            <div class="flex flex-col md:flex-row gap-6 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
+                <div class="flex-shrink-0">
+                    <label class="block text-xs font-black text-gray-500 uppercase mb-2 tracking-widest">İşlem Türü</label>
+                    <div class="flex p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="invoice_type" value="ALIS" class="peer hidden" checked onchange="updateTypeStyles('ALIS')">
+                            <div class="px-6 py-2 rounded-lg text-sm font-black transition-all peer-checked:bg-white dark:peer-checked:bg-gray-700 peer-checked:text-emerald-600 peer-checked:shadow-sm text-gray-500">
+                                <span class="material-symbols-outlined align-middle text-[18px] mr-1">download</span>
+                                ALIŞ FATURASI
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer ml-1">
+                            <input type="radio" name="invoice_type" value="SATIS" class="peer hidden" onchange="updateTypeStyles('SATIS')">
+                            <div class="px-6 py-2 rounded-lg text-sm font-black transition-all peer-checked:bg-white dark:peer-checked:bg-gray-700 peer-checked:text-rose-600 peer-checked:shadow-sm text-gray-500">
+                                <span class="material-symbols-outlined align-middle text-[18px] mr-1">upload</span>
+                                SATIŞ FATURASI
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                <div class="flex-1">
+                    <div id="typeInfo" class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3">
+                        <span class="p-1.5 bg-emerald-500 rounded-lg text-white material-symbols-outlined text-[18px]">inventory_2</span>
+                        <div>
+                            <p class="text-xs font-bold text-emerald-800 dark:text-emerald-400" id="typeTitle">Alış Faturası Modu</p>
+                            <p class="text-[10px] text-emerald-600 dark:text-emerald-500" id="typeDesc">Ürünler stoğa eklenecek ve maliyet ortalaması güncellenecektir.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                 
                 <!-- Supplier Info -->
@@ -140,11 +171,34 @@ $suppliers = $suppliers ?? [];
 
                     <!-- Ödeme Durumu (Col 2) -->
                     <div class="md:col-span-2">
-                        <label class="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1">Ödeme</label>
-                        <select name="payment_status" class="w-full px-3 py-2.5 border dark:border-border-dark rounded-lg bg-white dark:bg-input-dark text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm shadow-sm">
+                        <label class="block text-xs font-bold text-gray-600 dark:text-gray-300 uppercase mb-1">Ödeme Yöntemi</label>
+                        <select name="payment_source" onchange="togglePaymentExtra(this)" class="w-full px-3 py-2.5 border dark:border-border-dark rounded-lg bg-white dark:bg-input-dark text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm shadow-sm font-bold">
                             <option value="unpaid" selected>Cariye İşle (Açık)</option>
-                            <option value="paid">Nakit/Peşin (Ödendi)</option>
+                            <?php if(!empty($wallets)): ?>
+                                <optgroup label="Hesaplar / Kartlar">
+                                    <?php foreach($wallets as $w): ?>
+                                        <option value="wallet_<?php echo $w['id']; ?>" data-type="wallet">
+                                            <?php echo htmlspecialchars($w['name'] . ' (' . $w['owner_name'] . ')'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </optgroup>
+                            <?php endif; ?>
+                            <option value="transfer">Virman (Başka Cari Ödedi)</option>
                         </select>
+
+                        <!-- Virman İçin Cari Seçimi -->
+                        <div id="transferExtra" class="mt-2 hidden">
+                            <label class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1">Ödeyen Cariyi Yazın / Seçin</label>
+                            <input type="text" name="transfer_entity_name" list="entitiesList" 
+                                   class="w-full px-3 py-2 border dark:border-gray-700 rounded-lg bg-blue-50/50 dark:bg-blue-900/20 text-gray-900 dark:text-white text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none" 
+                                   placeholder="Ödemeyi yapan firma/kişi adı...">
+                            
+                            <datalist id="entitiesList">
+                                <?php foreach($suppliers as $s): ?>
+                                    <option value="<?php echo htmlspecialchars($s['name']); ?>">
+                                <?php endforeach; ?>
+                            </datalist>
+                        </div>
                     </div>
 
                 </div>
@@ -301,15 +355,23 @@ $suppliers = $suppliers ?? [];
 <div id="mappingModal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
     <div class="bg-white dark:bg-card-dark rounded-xl shadow-2xl w-full max-w-lg transform transition-all scale-100 p-6">
         <h3 class="text-xl font-bold mb-4 text-gray-800 dark:text-white flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary">find_in_page</span>
-            Ürün Eşleştirme
+            <span class="material-symbols-outlined text-primary" id="modalIcon">find_in_page</span>
+            <span id="modalTitleText">Ürün Eşleştirme</span>
         </h3>
         <p class="text-sm text-gray-500 mb-6">
-             "<span id="modalRawName" class="font-bold text-gray-800 dark:text-gray-200"></span>" için stok kartı seçin:
+             "<span id="modalRawName" class="font-bold text-gray-800 dark:text-gray-200"></span>" için <span id="modalTargetText">stok kartı</span> seçin:
         </p>
         
         <div class="mb-6">
             <select id="stockSelector" class="w-full p-3 border rounded-lg select2-enable"></select>
+        </div>
+
+        <div id="newCategoryArea" class="mb-6 hidden">
+            <label class="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-2">Veya Yeni Gider Kategorisi Ekle</label>
+            <div class="flex gap-2">
+                <input type="text" id="newCategoryName" class="flex-1 px-3 py-2 border rounded-lg dark:bg-input-dark dark:border-border-dark dark:text-white outline-none focus:ring-1 focus:ring-primary" placeholder="Kategori adı...">
+                <button type="button" onclick="saveQuickCategory()" class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">Ekle</button>
+            </div>
         </div>
 
         <div class="flex justify-end gap-3 pt-4 border-t dark:border-gray-700">
@@ -412,11 +474,77 @@ function removeRow(btn) {
 function openMappingModal(btn) {
     activeBtn = btn;
     const row = btn.closest('tr');
+    const type = row.querySelector('select[name*="[type]"]').value || 'STOK';
     const rawName = row.querySelector('input[name*="[raw_name]"]').value;
+    
     document.getElementById('modalRawName').innerText = rawName;
+    
+    const selector = $('#stockSelector');
+    if (type === 'GIDER') {
+        document.getElementById('modalTitleText').innerText = 'Gider Kategorisi Eşleştir';
+        document.getElementById('modalTargetText').innerText = 'gider kategorisi';
+        document.getElementById('modalIcon').innerText = 'account_tree';
+        document.getElementById('newCategoryArea').classList.remove('hidden');
+        
+        selector.select2({
+            dropdownParent: $('#mappingModal'),
+            width: '100%',
+            placeholder: 'Gider kategorisi arayın...',
+            ajax: {
+                url: '<?php echo public_url('api/search-expense-categories'); ?>',
+                dataType: 'json',
+                delay: 250,
+                processResults: function (data) {
+                    return { results: data.items.map(i => ({id: i.id, text: i.name})) };
+                }
+            }
+        });
+    } else {
+        document.getElementById('modalTitleText').innerText = 'Ürün Eşleştirme';
+        document.getElementById('modalTargetText').innerText = 'stok kartı';
+        document.getElementById('modalIcon').innerText = 'find_in_page';
+        document.getElementById('newCategoryArea').classList.add('hidden');
+        
+        selector.select2({
+            dropdownParent: $('#mappingModal'),
+            width: '100%',
+            placeholder: 'Ürün adı veya barkod ile arayın...',
+            ajax: {
+                url: '<?php echo public_url('api/search-stock'); ?>',
+                dataType: 'json',
+                delay: 250,
+                processResults: function (data) {
+                    return { results: data.items.map(i => ({id: i.id, text: i.urun_adi + ' (' + (i.barcode || '-') + ') - Stok: ' + i.miktar + ' ' + i.birim, additional: { unit: i.birim }})) };
+                }
+            }
+        });
+    }
+
     document.getElementById('mappingModal').classList.remove('hidden');
-    $('#stockSelector').val(null).trigger('change');
-    setTimeout(() => { $('#stockSelector').select2('open'); }, 100);
+    selector.val(null).trigger('change');
+    setTimeout(() => { selector.select2('open'); }, 100);
+}
+
+async function saveQuickCategory() {
+    const name = document.getElementById('newCategoryName').value;
+    if (!name) return;
+    
+    try {
+        const res = await fetch('<?php echo public_url('api/save-expense-category'); ?>', {
+            method: 'POST',
+            body: JSON.stringify({ name: name })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            document.getElementById('newCategoryName').value = '';
+            $('#stockSelector').val(null).trigger('change');
+            alert('Kategori eklendi, şimdi listeden arayıp seçebilirsiniz.');
+        } else {
+            alert(data.message);
+        }
+    } catch (e) {
+        alert('Hata: ' + e.message);
+    }
 }
 
 function closeModal() {
@@ -477,6 +605,45 @@ function toggleStaffMode() {
 function selectStaff(select) {
     const name = select.selectedOptions[0].text.trim();
     document.getElementById('supplierNameInput').value = name;
+}
+
+function togglePaymentExtra(select) {
+    const transferExtra = document.getElementById('transferExtra');
+    if (select.value === 'transfer') {
+        transferExtra.classList.remove('hidden');
+    } else {
+        transferExtra.classList.add('hidden');
+    }
+}
+
+function updateTypeStyles(type) {
+    const infoBox = document.getElementById('typeInfo');
+    const title = document.getElementById('typeTitle');
+    const desc = document.getElementById('typeDesc');
+    const icon = infoBox.querySelector('.material-symbols-outlined');
+    const saveBtn = document.querySelector('button[type="submit"]');
+
+    if (type === 'SATIS') {
+        infoBox.className = 'p-3 rounded-xl bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-800/30 flex items-center gap-3';
+        title.className = 'text-xs font-bold text-rose-800 dark:text-rose-400';
+        title.innerText = 'Satış Faturası Modu';
+        desc.className = 'text-[10px] text-rose-600 dark:text-rose-500';
+        desc.innerText = 'Ürünler stoktan çıkarılacak, cari alacaklandırılacaktır.';
+        icon.innerText = 'outbox';
+        icon.className = 'p-1.5 bg-rose-500 rounded-lg text-white material-symbols-outlined text-[18px]';
+        saveBtn.className = 'w-full md:w-auto px-8 py-3 bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-xl hover:shadow-lg hover:shadow-rose-500/30 font-bold transition-all flex items-center justify-center gap-2 transform active:scale-95';
+        saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> Kaydet ve Stoktan Düş';
+    } else {
+        infoBox.className = 'p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3';
+        title.className = 'text-xs font-bold text-emerald-800 dark:text-emerald-400';
+        title.innerText = 'Alış Faturası Modu';
+        desc.className = 'text-[10px] text-emerald-600 dark:text-emerald-500';
+        desc.innerText = 'Ürünler stoğa eklenecek ve maliyet ortalaması güncellenecektir.';
+        icon.innerText = 'inventory_2';
+        icon.className = 'p-1.5 bg-emerald-500 rounded-lg text-white material-symbols-outlined text-[18px]';
+        saveBtn.className = 'w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 font-bold transition-all flex items-center justify-center gap-2 transform active:scale-95';
+        saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> Kaydet ve Stoklara İşle';
+    }
 }
 </script>
 <?php include __DIR__ . '/../../views/layout/footer.php'; ?>

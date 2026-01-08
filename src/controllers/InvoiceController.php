@@ -26,192 +26,205 @@ class InvoiceController {
             die("Method not allowed");
         }
 
-        $headers = [
-            'supplier_name' => $_POST['supplier_name'],
-            'supplier_tax_id' => $_POST['supplier_tax_id'] ?? null,
-            'entity_type' => $_POST['entity_type'] ?? 'supplier',
-            'invoice_date' => $_POST['invoice_date'],
-            'invoice_no' => $_POST['invoice_no'] ?? '',
-            'total_amount' => $_POST['total_amount'],
-            'payment_status' => $_POST['payment_status'] ?? 'unpaid' // unpaid, paid, partial
-        ];
-        
-        $items = $_POST['items'] ?? [];
+        $paymentSource = $_POST['payment_source'] ?? 'unpaid';
+        $walletId = null;
+        $transferEntityId = null;
+        $paymentStatus = 'unpaid';
+
+        if (strpos($paymentSource, 'wallet_') === 0) {
+            $walletId = intval(str_replace('wallet_', '', $paymentSource));
+            $paymentStatus = 'paid';
+        } elseif ($paymentSource === 'transfer') {
+            $transferName = $_POST['transfer_entity_name'] ?? '';
+            if (!empty($transferName)) {
+                // Ödeyen cariyi bul veya oluştur
+                $transferEntity = $this->entityModel->findOrCreate($transferName, null, 'supplier');
+                $transferEntityId = $transferEntity['id'];
+                $paymentStatus = 'paid';
+            }
+        }
 
         try {
             $this->pdo->beginTransaction();
 
-            // --- FAZ 2.2 & FAZ 4.1: Cari Eşleme ve Bakiye Güncelleme ---
+            $invoiceType = $_POST['invoice_type'] ?? 'ALIS';
+            $defaultEntityType = ($invoiceType === 'SATIS') ? 'customer' : 'supplier';
+            $entityType = $_POST['entity_type'] ?? $defaultEntityType;
+            
+            // Eğer personel modu seçilmemişse ama satış faturasıysa customer yapalım
+            if ($entityType === 'supplier' && $invoiceType === 'SATIS') {
+                $entityType = 'customer';
+            }
+
             $entity = $this->entityModel->findOrCreate(
-                $headers['supplier_name'],
-                $headers['supplier_tax_id'],
-                $headers['entity_type']
+                $_POST['supplier_name'],
+                $_POST['supplier_tax_id'] ?? null,
+                $entityType
             );
             $entityId = $entity['id'];
 
-            // Mükerrer Kontrolü (Fatura No ve Cari bazlı)
-            if (!empty($headers['invoice_no'])) {
-                $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM inv_movements WHERE document_no = ? AND entity_id = ?");
-                $stmt->execute([$headers['invoice_no'], $entityId]);
+            // Mükerrer Kontrolü
+            $invoiceNo = $_POST['invoice_no'] ?? '';
+            if (!empty($invoiceNo)) {
+                $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM inv_entity_transactions WHERE document_no = ? AND entity_id = ?");
+                $stmt->execute([$invoiceNo, $entityId]);
                 if ($stmt->fetchColumn() > 0) {
-                     throw new Exception("Bu fatura numarası ({$headers['invoice_no']}) bu cari için daha önce kaydedilmiş! Mükerrer kayıt yapılamaz.");
+                     throw new Exception("Bu fatura numarası ({$invoiceNo}) bu cari için daha önce kaydedilmiş!");
                 }
             }
 
-            // KDV ve İskonto Toplamlarını Takip Et
+            $invoiceType = $_POST['invoice_type'] ?? 'ALIS'; // ALIS or SATIS
+            $movementType = ($invoiceType === 'SATIS') ? 'out_invoice' : 'in_invoice';
+
             $totalTax = 0;
-            $totalDiscount = 0; // Şimdilik iskonto hesaplaması karmaşık olduğu için 0, ileride eklenebilir.
-
-            // Process stock items
+            $items = $_POST['items'] ?? [];
             foreach ($items as $item) {
-                if ($item['type'] !== 'STOK') {
-                    // Log expense or skip for now based on 'inv_products' structure
-                    continue; 
-                }
-
-                $mappedId = !empty($item['mapped_id']) ? $item['mapped_id'] : null;
-                $quantity = floatval($item['quantity']); // Alışlarda miktar pozitif
-                $unitPrice = floatval($item['unit_price']); // Formdan gelen (iskontolu/net) fiyat
+                $type = $item['type'] ?? 'STOK';
+                $quantity = floatval($item['quantity'] ?? 1);
+                $unitPrice = floatval($item['unit_price'] ?? 0);
                 $taxRate = isset($item['tax_rate']) ? floatval($item['tax_rate']) : 20;
 
-                // Satırın KDV Tutarını Hesapla
-                // Formül: Miktar * BirimFiyat * (VergiOranı / 100)
                 $lineTotal = $quantity * $unitPrice;
                 $lineTax = $lineTotal * ($taxRate / 100);
                 $totalTax += $lineTax;
 
-                // If not mapped, create new product
-                if (!$mappedId) {
+                $docNo = !empty($invoiceNo) ? $invoiceNo : ($_POST['invoice_date'] . '-INV');
+
+                if ($type === 'STOK') {
+                    $mappedId = !empty($item['mapped_id']) ? $item['mapped_id'] : null;
+
+                    if (!$mappedId) {
                     $mappedId = $this->productModel->create([
                         'name' => $item['raw_name'],
                         'barcode' => null,
-                        'unit' => $item['unit'],
+                        'unit' => $item['unit'] ?? 'Adet',
                         'stock_quantity' => 0,
-                        'avg_cost' => 0
+                        'avg_cost' => 0,
+                        'satis_fiyat' => ($invoiceType === 'SATIS') ? $unitPrice : 0
                     ]);
                 }
 
-                // --- 1.2 Mapping (Learning) ---
                 if (!empty($item['raw_name']) && $mappedId) {
                     $this->mappingModel->createOrUpdate($item['raw_name'], $mappedId);
                 }
 
                 $product = $this->productModel->find($mappedId);
-                
-                // --- 4.2. Ağırlıklı Ortalama Algoritması ---
                 $currentStock = floatval($product['stock_quantity']);
                 $currentAvgCost = floatval($product['avg_cost']);
                 
-                // Stok miktarı artıyor
-                $newStock = $currentStock + $quantity;
-                $newAvgCost = 0;
-
-                if ($currentStock < 0) $currentStock = 0; // Negatif stok varsa düzeltme (isteğe bağlı)
-
-                // Yeni Maliyet Hesabı
-                $totalOldValue = $currentStock * $currentAvgCost;
-                $totalNewValue = $quantity * $unitPrice;
-                
-                if ($newStock > 0) {
-                    $newAvgCost = ($totalOldValue + $totalNewValue) / $newStock;
+                if ($invoiceType === 'SATIS') {
+                    // Satış: Stoktan düş, maliyet değişmez, satış fiyatı GÜNCEL fiyata set edilir
+                    $newStock = $currentStock - $quantity;
+                    $newAvgCost = $currentAvgCost;
+                    $this->productModel->updateSalePrice($mappedId, $unitPrice); // Satış fiyatını güncelle
                 } else {
-                    $newAvgCost = $unitPrice;
+                    // Alış: Stoğa ekle, maliyet güncelle
+                    $newStock = $currentStock + $quantity;
+                    $totalOldValue = max(0, $currentStock) * $currentAvgCost;
+                    $totalNewValue = $quantity * $unitPrice;
+                    $newAvgCost = ($newStock > 0) ? ($totalOldValue + $totalNewValue) / $newStock : $unitPrice;
                 }
 
-                // Update Product
-                // Ayrıca ürünün varsayılan KDV oranını da güncelle (en son faturadaki KDV oranı geçerli olsun)
                 $this->productModel->updateCostAndStock($mappedId, $newStock, $newAvgCost, $unitPrice);
-                
-                // KDV Oranını güncellemek için ayrı bir sorgu yapabiliriz veya ProductModel'e ekleyebiliriz.
-                // Şimdilik hızlı çözüm:
                 $this->pdo->prepare("UPDATE inv_products SET tax_rate = ? WHERE id = ?")->execute([$taxRate, $mappedId]);
 
-                // --- 4.3. Hareket Loglama ---
-                $docNo = !empty($headers['invoice_no']) ? $headers['invoice_no'] : ($headers['invoice_date'] . '-INV');
-
-                $this->movementModel->log([
-                    'product_id' => $mappedId,
-                    'entity_id' => $entityId,
-                    'type' => 'in_invoice',
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'tax_rate' => $taxRate,     // Eklendi
-                    'tax_amount' => $lineTax,   // Eklendi
-                    'prev_stock' => $currentStock,
-                    'new_stock' => $newStock,
-                    'document_no' => $docNo,
-                    'description' => 'Fatura: ' . $docNo . ', Tedarikçi: ' . $headers['supplier_name']
-                ]);
+                    $this->movementModel->log([
+                        'product_id' => $mappedId,
+                        'entity_id' => $entityId,
+                        'type' => $movementType,
+                        'movement_date' => $_POST['invoice_date'],
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'tax_rate' => $taxRate,
+                        'tax_amount' => $lineTax,
+                        'prev_stock' => $currentStock,
+                        'new_stock' => $newStock,
+                        'document_no' => $docNo,
+                        'description' => ($invoiceType === 'SATIS' ? 'Satış: ' : 'Alış: ') . $docNo
+                    ]);
+                } else if ($type === 'GIDER') {
+                    $categoryId = !empty($item['mapped_id']) ? $item['mapped_id'] : null;
+                    
+                    $this->movementModel->log([
+                        'product_id' => null,
+                        'expense_category_id' => $categoryId,
+                        'entity_id' => $entityId,
+                        'type' => $movementType,
+                        'movement_date' => $_POST['invoice_date'],
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'tax_rate' => $taxRate,
+                        'tax_amount' => $lineTax,
+                        'prev_stock' => 0,
+                        'new_stock' => 0,
+                        'document_no' => $docNo,
+                        'description' => ($invoiceType === 'SATIS' ? 'Gelir: ' : 'Gider: ') . ($item['raw_name'] ?? 'Genel Gider')
+                    ]);
+                }
             }
 
-            // --- FAZ 4.2: Negatif Bakiye Kontrolü ve Borç Limiti Uyarısı ---
-            $currentBalance = $this->entityModel->getBalance($entityId);
-            $warnings = [];
+            // --- Cari Bakiye ve Ödeme İşlemi ---
+            $totalAmount = floatval($_POST['total_amount']);
+            $docNo = !empty($invoiceNo) ? $invoiceNo : ($_POST['invoice_date'] . '-INV');
             
-            // If invoice is unpaid, update supplier balance (negative = we owe them)
-            // KDV Dahil Toplam Tutar Bakiyeden Düşülür (Borç Artar)
-            
-            $docNo = !empty($headers['invoice_no']) ? $headers['invoice_no'] : ($headers['invoice_date'] . '-INV');
+            // ALIŞ: Cariyi Alacaklandır (Borçlandık -), SATIŞ: Cariyi Borçlandır (Alacaklıyız +)
+            $balanceChange = ($invoiceType === 'SATIS') ? $totalAmount : -$totalAmount;
+            $entityDesc = ($invoiceType === 'SATIS' ? 'Satış Faturası - ' : 'Alış Faturası - ') . $_POST['invoice_date'];
 
-            if ($headers['payment_status'] === 'unpaid') {
-                $amount = -floatval($headers['total_amount']); // Negative because we owe
-                $projectedBalance = $currentBalance + $amount;
-                
-                // Check if debt limit is exceeded (configurable, default -50000)
-                $debtLimit = -50000; 
-                if ($projectedBalance < $debtLimit) {
-                    $warnings[] = "UYARI: Borç limiti aşılıyor! Mevcut: " . number_format($currentBalance, 2) . " ₺, Yeni: " . number_format($projectedBalance, 2) . " ₺";
-                }
-                
-                // Check if debt is significantly increasing
-                if ($currentBalance < 0 && $projectedBalance < ($currentBalance * 1.5)) {
-                    $warnings[] = "DİKKAT: Tedarikçi borcu %50'den fazla artıyor!";
-                }
-                
-                $this->entityModel->updateBalance(
+            // 1. Her durumda faturayı cariye işle
+            $this->entityModel->updateAssetBalance(
+                $entityId,
+                $balanceChange,
+                'TL',
+                'fatura',
+                $entityDesc,
+                $_POST['invoice_date'],
+                $docNo,
+                1.0,
+                null, 
+                false,
+                1,
+                $totalTax,
+                0,
+                null,
+                null,
+                null
+            );
+
+            // 2. Eğer ödenmişse, bir de ödeme kaydı ekle
+            if ($paymentStatus === 'paid') {
+                // Alış faturası için ödeme (+ bakiyeyi düzeltir), Satış faturası için tahsilat (- bakiyeyi düzeltir)
+                $paymentAmount = ($invoiceType === 'SATIS') ? -$totalAmount : $totalAmount;
+                $paymentType = ($invoiceType === 'SATIS') ? 'tahsilat' : 'odeme';
+                $paymentDesc = ($invoiceType === 'SATIS' ? 'Fatura Tahsilatı' : 'Fatura Ödemesi') . ' (' . ($walletId ? 'Cüzdan/Kart' : 'Virman') . ') - ' . $docNo;
+
+                $this->entityModel->updateAssetBalance(
                     $entityId,
-                    $amount,
-                    'fatura',
-                    'Alış Faturası - Tarih: ' . $headers['invoice_date'],
-                    $headers['invoice_date'],
+                    $paymentAmount,
+                    'TL',
+                    $paymentType,
+                    $paymentDesc,
+                    $_POST['invoice_date'],
                     $docNo,
-                    $totalTax,      // Eklendi
-                    $totalDiscount  // Eklendi
-                );
-            } elseif ($headers['payment_status'] === 'paid') {
-                // Nakit ödenmiş olsa bile kaydı tutulsun ama bakiye 0 değişsin.
-                // Veya 'fatura' olarak borçlandırılıp, ardından 'odeme' olarak kapatılabilir.
-                // Ancak basitleştirmek için 0 bakiye değişimi ile işlem logu atıyoruz.
-                $this->entityModel->updateBalance(
-                    $entityId,
-                    0, // No balance change
-                    'fatura',
-                    'Alış Faturası (Ödenmiş) - Tarih: ' . $headers['invoice_date'],
-                    $headers['invoice_date'],
-                    $docNo,
-                    $totalTax,      // Eklendi
-                    $totalDiscount  // Eklendi
+                    1.0,
+                    $walletId,
+                    false,
+                    1,
+                    0,
+                    $transferEntityId
                 );
             }
 
             $this->pdo->commit();
-            
-            // Redirect with warnings if any
-            $successMessage = 'Fatura başarıyla kaydedildi.';
-            if (!empty($warnings)) {
-                $successMessage .= ' ' . implode(' ', $warnings);
-            }
-            
-            if (function_exists('public_url')) {
-                header('Location: ' . public_url('inventory?success=1&message=' . urlencode($successMessage)));
-            } else {
-                header('Location: /proje/inventory?success=1&message=' . urlencode($successMessage)); 
-            }
+            header('Location: ' . public_url('inventory?success=1&message=' . urlencode('Fatura başarıyla kaydedildi.')));
             exit;
 
         } catch (Exception $e) {
-            $this->pdo->rollBack();
-            die("Hata oluştu: " . $e->getMessage());
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            $errorMessage = $e->getMessage();
+            $errorCode = "ERR_INV_STORE";
+            include __DIR__ . '/../../views/layout/error_page.php';
+            exit;
         }
     }
 }

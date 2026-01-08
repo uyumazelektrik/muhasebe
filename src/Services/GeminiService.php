@@ -66,7 +66,7 @@ class GeminiService {
             \"items\": [
                 {
                     \"name\": \"...\",
-                    \"type\": \"STOK\",
+                    \"type\": \"STOK\", // Eğer ürün bir emtia/malzeme ise STOK, eğer hizmet/fatura (Elektrik, Su, Yemek, Nakliye vb.) ise GIDER
                     \"quantity\": 1.00,
                     \"unit\": \"Adet\",
                     \"unit_price\": 123.45, // (Tutar / Adet)

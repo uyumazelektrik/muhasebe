@@ -3,12 +3,185 @@
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../src/helpers.php';
 
+// Filtreleme ve Sayfalama Parametreleri
+$search = isset($_GET['search']) ? sanitize($_GET['search']) : '';
+$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 25;
+if (!in_array($limit, [25, 50, 100, 200, 500])) $limit = 25;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($page - 1) * $limit;
+
+// Toplam ürün sayısını çek (Filtresiz)
+$totalItemsStmt = $pdo->query("SELECT COUNT(*) FROM inv_products");
+$totalItemsTotal = $totalItemsStmt->fetchColumn();
+
+// Filtrelenmiş toplam sayıyı çek
+$countSql = "SELECT COUNT(*) FROM inv_products WHERE name LIKE :search OR barcode LIKE :search";
+$countStmt = $pdo->prepare($countSql);
+$countStmt->execute([':search' => "%$search%"]);
+$totalFilteredItems = $countStmt->fetchColumn();
+
+$totalPages = ceil($totalFilteredItems / $limit);
+
 // Stokları çek
 try {
-    $stmt = $pdo->query("SELECT *, name as urun_adi, unit as birim, stock_quantity as miktar, avg_cost as alis_fiyat, critical_level as kritik_esik FROM inv_products ORDER BY name ASC");
+    $sql = "SELECT *, name as urun_adi, unit as birim, stock_quantity as miktar, avg_cost as alis_fiyat, critical_level as kritik_esik 
+            FROM inv_products 
+            WHERE name LIKE :search OR barcode LIKE :search 
+            ORDER BY name ASC 
+            LIMIT :limit OFFSET :offset";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':search', "%$search%", PDO::PARAM_STR);
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
     $stocks = $stmt->fetchAll();
 } catch (PDOException $e) {
     $stocks = [];
+}
+
+// --- AJAX Request Kontrolü ---
+if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
+    // Sadece tablo satırlarını ve sayfalama barını döndür
+    ob_start();
+    ?>
+    <tbody id="stockTableBody">
+        <?php if (empty($stocks)): ?>
+            <tr>
+                <td colspan="10" class="py-12 px-6 text-center">
+                    <div class="flex flex-col items-center justify-center text-slate-400">
+                        <span class="material-symbols-outlined text-5xl mb-2">inventory_2</span>
+                        <p class="text-sm font-bold">Aramanıza uygun ürün bulunamadı.</p>
+                    </div>
+                </td>
+            </tr>
+        <?php else: ?>
+            <?php foreach ($stocks as $stock): 
+                $isCritical = $stock['miktar'] <= $stock['kritik_esik'];
+            ?>
+                <tr class="group border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all">
+                    <td class="py-4 px-6 text-center">
+                        <div class="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform">
+                            <?php if ($stock['gorsel']): ?>
+                                <img src="<?php echo $stock['gorsel']; ?>" class="w-full h-full object-cover rounded-lg">
+                            <?php else: ?>
+                                <span class="material-symbols-outlined">inventory_2</span>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                    <td class="py-4 px-6 font-mono text-xs text-slate-500"><?php echo htmlspecialchars($stock['barcode'] ?: '-'); ?></td>
+                    <td class="py-4 px-6">
+                        <div class="flex flex-col">
+                            <span class="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors"><?php echo htmlspecialchars($stock['urun_adi']); ?></span>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">ID: #<?php echo $stock['id']; ?></span>
+                        </div>
+                    </td>
+                    <td class="py-4 px-6 text-center">
+                        <span class="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-500"><?php echo htmlspecialchars($stock['birim']); ?></span>
+                    </td>
+                    <td class="py-4 px-6 text-center font-black text-slate-900 dark:text-white">
+                        <?php echo number_format($stock['miktar'], 2); ?>
+                    </td>
+                    <?php if (current_role() === 'admin'): ?>
+                    <td class="py-4 px-6 text-right font-mono text-sm font-bold text-emerald-500">
+                        <?php echo number_format($stock['alis_fiyat'], 2); ?> ₺
+                    </td>
+                    <?php endif; ?>
+                    <td class="py-4 px-6 text-right font-mono text-sm font-bold text-primary">
+                        <?php echo number_format($stock['satis_fiyat'], 2); ?> ₺
+                    </td>
+                    <td class="py-4 px-6 text-center">
+                        <?php 
+                        $kaynak = $stock['kaynak'] ?? 'Manuel';
+                        $kaynakColor = match($kaynak) {
+                            'AI' => 'bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400 border-purple-200 dark:border-purple-800',
+                            'Fatura' => 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+                            default => 'bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                        };
+                        ?>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase border <?php echo $kaynakColor; ?>">
+                            <?php echo htmlspecialchars($kaynak); ?>
+                        </span>
+                    </td>
+                    <td class="py-4 px-6 text-center">
+                        <?php if ($isCritical): ?>
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                                <span class="size-1.5 rounded-full bg-red-600 dark:bg-red-400"></span>
+                                Kritik
+                            </span>
+                        <?php else: ?>
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 text-[10px] font-bold uppercase tracking-wider">
+                                <span class="size-1.5 rounded-full bg-green-600 dark:bg-green-400"></span>
+                                Normal
+                            </span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="py-4 px-6 text-right">
+                        <?php if (current_role() === 'admin'): ?>
+                            <div class="flex items-center justify-end gap-2">
+                            <a href="<?php echo public_url('inventory/detail?id=' . $stock['id']); ?>" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors" title="Analiz ve Grafik">
+                                <span class="material-symbols-outlined text-[20px]">analytics</span>
+                            </a>
+                            <button onclick='openStockModal(<?php echo htmlspecialchars(json_encode($stock), ENT_QUOTES, "UTF-8"); ?>)' class="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors" title="Düzenle">
+                                <span class="material-symbols-outlined text-[20px]">edit</span>
+                            </button>
+                            <form method="POST" action="<?php echo public_url('api/delete-stock'); ?>" onsubmit="return confirm('Bu ürünü silmek istediğinize emin misiniz?');" class="inline">
+                                <input type="hidden" name="id" value="<?php echo $stock['id']; ?>">
+                                <button type="submit" class="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors" title="Sil">
+                                    <span class="material-symbols-outlined text-[20px]">delete</span>
+                                </button>
+                            </form>
+                        </div>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </tbody>
+    <!-- AJAX_SEP -->
+    <?php if ($totalPages > 1): ?>
+        <div class="px-6 py-4 bg-slate-50 dark:bg-[#1c222e] border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                Toplam <span class="text-slate-900 dark:text-white"><?php echo $totalFilteredItems; ?></span> üründen 
+                <span class="text-slate-900 dark:text-white"><?php echo ($offset + 1); ?> - <?php echo min($offset + $limit, $totalFilteredItems); ?></span> arası gösteriliyor
+            </div>
+            
+            <div class="flex items-center gap-1">
+                <?php if ($page > 1): ?>
+                    <button onclick="changePage(<?php echo $page - 1; ?>)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-primary hover:text-white transition-all">
+                        <span class="material-symbols-outlined text-[20px]">chevron_left</span>
+                    </button>
+                <?php endif; ?>
+
+                <?php 
+                $range = 2;
+                for ($i = 1; $i <= $totalPages; $i++): 
+                    if ($i == 1 || $i == $totalPages || ($i >= $page - $range && $i <= $page + $range)):
+                ?>
+                    <button onclick="changePage(<?php echo $i; ?>)" 
+                            class="w-10 h-10 flex items-center justify-center rounded-xl font-bold text-sm transition-all
+                            <?php echo $i == $page 
+                                ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                                : 'bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-primary hover:text-primary'; ?>">
+                        <?php echo $i; ?>
+                    </button>
+                <?php 
+                    elseif ($i == $page - $range - 1 || $i == $page + $range + 1):
+                        echo '<span class="px-2 text-slate-400">...</span>';
+                    endif;
+                endfor; 
+                ?>
+
+                <?php if ($page < $totalPages): ?>
+                    <button onclick="changePage(<?php echo $page + 1; ?>)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-primary hover:text-white transition-all">
+                        <span class="material-symbols-outlined text-[20px]">chevron_right</span>
+                    </button>
+                <?php endif; ?>
+            </div>
+        </div>
+    <?php endif; ?>
+    <?php
+    echo ob_get_clean();
+    exit;
 }
 
 // Başlık ayarla
@@ -63,7 +236,7 @@ include __DIR__ . '/../../views/layout/header.php';
                     </div>
                     <div>
                         <p class="text-[10px] font-bold text-slate-500 uppercase">Toplam Ürün</p>
-                        <p class="text-xl font-black text-slate-900 dark:text-white"><?php echo count($stocks); ?></p>
+                        <p class="text-xl font-black text-slate-900 dark:text-white"><?php echo $totalItemsTotal; ?></p>
                     </div>
                 </div>
             </div>
@@ -82,6 +255,26 @@ include __DIR__ . '/../../views/layout/header.php';
                         <p class="text-xl font-black text-slate-900 dark:text-white"><?php echo $kritikCount; ?></p>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Filtreler ve Arama -->
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+            <div class="relative w-full md:w-96">
+                <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                <input type="text" id="stockSearch" value="<?php echo htmlspecialchars($search); ?>" placeholder="Ürün adı veya barkod ile hızlı arama..." 
+                       class="w-full h-12 pl-12 pr-4 bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-700 dark:text-white">
+            </div>
+            
+            <div class="flex items-center gap-3 shrink-0">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">Göster:</span>
+                <select id="stockLimit" onchange="updateFilters()" class="h-10 px-4 bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-white focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer">
+                    <option value="25" <?php echo $limit == 25 ? 'selected' : ''; ?>>25 Ürün</option>
+                    <option value="50" <?php echo $limit == 50 ? 'selected' : ''; ?>>50 Ürün</option>
+                    <option value="100" <?php echo $limit == 100 ? 'selected' : ''; ?>>100 Ürün</option>
+                    <option value="200" <?php echo $limit == 200 ? 'selected' : ''; ?>>200 Ürün</option>
+                    <option value="500" <?php echo $limit == 500 ? 'selected' : ''; ?>>500 Ürün</option>
+                </select>
             </div>
         </div>
 
@@ -105,7 +298,7 @@ include __DIR__ . '/../../views/layout/header.php';
                             <th class="py-4 px-6 text-xs font-semibold text-[#9da6b9] uppercase tracking-wider text-right">İşlem</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+                    <tbody id="stockTableBody" class="divide-y divide-slate-200 dark:divide-slate-800">
                         <?php if (empty($stocks)): ?>
                             <tr>
                                 <td colspan="7" class="py-12 text-center text-slate-500 dark:text-slate-400">
@@ -183,8 +376,11 @@ include __DIR__ . '/../../views/layout/header.php';
                                     </td>
                                     <td class="py-4 px-6 text-right">
                                         <?php if (current_role() === 'admin'): ?>
-                                        <div class="flex items-center justify-end gap-2">
-                                            <button onclick='openStockModal(<?php echo json_encode($stock); ?>)' class="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors" title="Düzenle">
+                                         <div class="flex items-center justify-end gap-2">
+                                            <a href="<?php echo public_url('inventory/detail?id=' . $stock['id']); ?>" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors" title="Analiz ve Grafik">
+                                                <span class="material-symbols-outlined text-[20px]">analytics</span>
+                                            </a>
+                                            <button onclick='openStockModal(<?php echo htmlspecialchars(json_encode($stock), ENT_QUOTES, "UTF-8"); ?>)' class="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors" title="Düzenle">
                                                 <span class="material-symbols-outlined text-[20px]">edit</span>
                                             </button>
                                             <form method="POST" action="<?php echo public_url('api/delete-stock'); ?>" onsubmit="return confirm('Bu ürünü silmek istediğinize emin misiniz?');" class="inline">
@@ -203,6 +399,51 @@ include __DIR__ . '/../../views/layout/header.php';
                         <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+            
+            <!-- Sayfalama Alt Bar -->
+            <div id="paginationContainer">
+                <?php if ($totalPages > 1): ?>
+                <div class="px-6 py-4 bg-slate-50 dark:bg-[#1c222e] border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                        Toplam <span class="text-slate-900 dark:text-white"><?php echo $totalFilteredItems; ?></span> üründen 
+                        <span class="text-slate-900 dark:text-white"><?php echo ($offset + 1); ?> - <?php echo min($offset + $limit, $totalFilteredItems); ?></span> arası gösteriliyor
+                    </div>
+                    
+                    <div class="flex items-center gap-1">
+                        <?php if ($page > 1): ?>
+                            <button onclick="changePage(<?php echo $page - 1; ?>)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-primary hover:text-white transition-all">
+                                <span class="material-symbols-outlined text-[20px]">chevron_left</span>
+                            </button>
+                        <?php endif; ?>
+
+                        <?php 
+                        $range = 2;
+                        for ($i = 1; $i <= $totalPages; $i++): 
+                            if ($i == 1 || $i == $totalPages || ($i >= $page - $range && $i <= $page + $range)):
+                        ?>
+                            <button onclick="changePage(<?php echo $i; ?>)" 
+                                    class="w-10 h-10 flex items-center justify-center rounded-xl font-bold text-sm transition-all
+                                    <?php echo $i == $page 
+                                        ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                                        : 'bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-primary hover:text-primary'; ?>">
+                                <?php echo $i; ?>
+                            </button>
+                        <?php 
+                            elseif ($i == $page - $range - 1 || $i == $page + $range + 1):
+                                echo '<span class="px-2 text-slate-400">...</span>';
+                            endif;
+                        endfor; 
+                        ?>
+
+                        <?php if ($page < $totalPages): ?>
+                            <button onclick="changePage(<?php echo $page + 1; ?>)" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-primary hover:text-white transition-all">
+                                <span class="material-symbols-outlined text-[20px]">chevron_right</span>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </main>
@@ -250,6 +491,27 @@ include __DIR__ . '/../../views/layout/header.php';
             <input type="hidden" name="kaynak" id="stockKaynak" value="Manuel">
             
             <div class="space-y-6">
+                <!-- Ürün Görseli -->
+                <div class="space-y-2">
+                    <label class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                        <span class="material-symbols-outlined text-xs">image</span> Ürün Görseli
+                    </label>
+                    <div class="relative group">
+                        <div id="imagePreviewContainer" onclick="document.getElementById('manualImageInput').click()" 
+                             class="w-full h-48 bg-slate-50 dark:bg-[#0b0f1a] border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[32px] flex flex-col items-center justify-center cursor-pointer hover:border-primary transition-all overflow-hidden">
+                            <img id="stockImagePreview" src="" class="hidden w-full h-full object-contain p-4">
+                            <div id="imagePlaceholder" class="flex flex-col items-center gap-2 text-slate-400">
+                                <span class="material-symbols-outlined text-4xl">add_a_photo</span>
+                                <span class="text-[10px] font-black uppercase tracking-tighter">Görsel Seç veya Sürükle</span>
+                            </div>
+                        </div>
+                        <input type="file" id="manualImageInput" accept="image/*" class="hidden" onchange="handleManualImageUpload(this)">
+                        <button type="button" onclick="clearImage()" id="clearImageBtn" class="hidden absolute top-4 right-4 w-10 h-10 bg-black/50 backdrop-blur-md text-white rounded-full flex items-center justify-center hover:bg-red-500 transition-all">
+                            <span class="material-symbols-outlined text-sm">close</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Ürün Adı -->
                 <div class="space-y-2">
                     <label class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">
@@ -401,10 +663,20 @@ aiFileInput.addEventListener('change', function(e) {
                 // AI'dan gelen verileri form alanlarına doldur
                 if (data.status === 'success' || data.status === 'not_found') {
                     // Eğer ürün veritabanında varsa uyarı ver ama alanları doldur
-                    if (data.status === 'success') {
-                        alert('Bu ürün zaten stokta kayıtlı: ' + data.item.urun_adi);
-                        // Düzenleme moduna geçebiliriz
-                        openStockModal(data.item);
+                    if (data.status === 'success' && data.items && data.items.length > 0) {
+                        const matchedItem = data.items[0];
+                        
+                        // Daha estetik bildirim
+                        const notify = document.createElement('div');
+                        notify.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-amber-500 text-white px-8 py-4 rounded-3xl shadow-2xl z-[1000] animate-in fade-in slide-in-from-top-4 duration-300 flex items-center gap-3 font-black text-sm';
+                        notify.innerHTML = `<span class="material-symbols-outlined">info</span> Bu ürün zaten kayıtlı!`;
+                        document.body.appendChild(notify);
+                        setTimeout(() => {
+                            notify.classList.add('animate-out', 'fade-out', 'slide-out-to-top-4');
+                            setTimeout(() => notify.remove(), 300);
+                        }, 3000);
+
+                        openStockModal(matchedItem);
                         return;
                     }
 
@@ -418,7 +690,7 @@ aiFileInput.addEventListener('change', function(e) {
                     document.getElementById('barcode').value = aiData.barcode || '';
                     
                     // Görseli ve Kaynağı set et
-                    document.getElementById('stockGorsel').value = compressedBase64;
+                    setPreviewImage(compressedBase64);
                     document.getElementById('stockKaynak').value = 'AI';
                     
                     // Bildirim
@@ -441,6 +713,61 @@ aiFileInput.addEventListener('change', function(e) {
     reader.readAsDataURL(file);
 });
 
+function handleManualImageUpload(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const MAX_SIZE = 800;
+            if (width > height) {
+                if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+            } else {
+                if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const base64 = canvas.toDataURL('image/jpeg', 0.8);
+            setPreviewImage(base64);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function setPreviewImage(base64) {
+    const preview = document.getElementById('stockImagePreview');
+    const placeholder = document.getElementById('imagePlaceholder');
+    const clearBtn = document.getElementById('clearImageBtn');
+    const hiddenInput = document.getElementById('stockGorsel');
+
+    if (base64) {
+        preview.src = base64;
+        preview.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        clearBtn.classList.remove('hidden');
+        hiddenInput.value = base64;
+    } else {
+        preview.src = '';
+        preview.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        clearBtn.classList.add('hidden');
+        hiddenInput.value = '';
+    }
+}
+
+function clearImage() {
+    setPreviewImage(null);
+    document.getElementById('manualImageInput').value = '';
+}
+
 function openStockModal(data = null) {
     const modal = document.getElementById('stockModal');
     const form = document.getElementById('stockForm');
@@ -461,18 +788,68 @@ function openStockModal(data = null) {
         document.getElementById('kritik_esik').value = data.kritik_esik;
         document.getElementById('alis_fiyat').value = data.alis_fiyat;
         document.getElementById('satis_fiyat').value = data.satis_fiyat;
-        document.getElementById('stockGorsel').value = data.gorsel || '';
         document.getElementById('stockKaynak').value = data.kaynak || 'Manuel';
+        setPreviewImage(data.gorsel || null);
     } else {
         title.innerText = 'Yeni Ürün Ekle';
         form.action = '<?php echo public_url("api/add-stock"); ?>';
         form.reset();
         stockId.value = '';
-        document.getElementById('stockGorsel').value = '';
         document.getElementById('stockKaynak').value = 'Manuel';
+        setPreviewImage(null);
     }
     
     modal.classList.remove('hidden');
+}
+
+// Filtreleme ve Arama Mantığı (AJAX)
+let searchTimer;
+const searchInput = document.getElementById('stockSearch');
+
+if (searchInput) {
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            updateFilters(1); // Arama yapınca 1. sayfaya dön
+        }, 300); // 300ms daha seri tepki
+    });
+}
+
+async function updateFilters(page = <?php echo $page; ?>) {
+    const search = document.getElementById('stockSearch').value;
+    const limit = document.getElementById('stockLimit').value;
+    
+    // URL'yi güncelle (Refresh yapmadan)
+    const url = new URL(window.location.href);
+    url.searchParams.set('search', search);
+    url.searchParams.set('limit', limit);
+    url.searchParams.set('page', page);
+    window.history.pushState({}, '', url);
+
+    // Tablo ve Sayfalamayı AJAX ile çek
+    try {
+        const ajaxUrl = new URL(url);
+        ajaxUrl.searchParams.set('ajax', '1');
+        
+        const response = await fetch(ajaxUrl);
+        const html = await response.text();
+        
+        // Gelen içeriği parçala (AJAX_SEP ayracı ile)
+        const [tableBody, pagination] = html.split('<!-- AJAX_SEP -->');
+        
+        // Tabloyu güncelle
+        document.getElementById('stockTableBody').outerHTML = tableBody;
+        
+        // Sayfalamayı güncelle
+        document.getElementById('paginationContainer').innerHTML = pagination;
+        
+    } catch (error) {
+        console.error('Filtreleme hatası:', error);
+    }
+}
+
+function changePage(page) {
+    updateFilters(page);
 }
 
 function closeStockModal() {

@@ -120,23 +120,46 @@ try {
     }
 
     // 3. Cari İşlemi Güncelle
-    $stmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ? WHERE id = ?");
-    $stmt->execute([$desc, $docNo, $date, $newTotalAmount, $id]);
+    // Hızlı işlem ise ve yeni tutar geldiyse
+    if ($oldTrans['type'] !== 'fatura' && isset($data['amount'])) {
+        $assetAmount = floatval($data['amount']);
+        $newRate = floatval($data['exchange_rate'] ?? 1.0);
+        
+        // Yönü belirle (Tahsilat negatif, Ödeme pozitif)
+        if ($oldTrans['type'] === 'tahsilat') {
+            $assetAmount = -abs($assetAmount);
+        } else {
+            $assetAmount = abs($assetAmount);
+        }
+        
+        $newTotalAmount = $assetAmount * $newRate;
+        
+        // Varlık bakiyesini güncelle (inv_entity_balances)
+        // Önce eskiyi çıkar, yeniyi ekle
+        if ($oldTrans['asset_type']) {
+            $pdo->prepare("UPDATE inv_entity_balances SET amount = amount - ? WHERE entity_id = ? AND asset_type = ?")
+                ->execute([$oldTrans['asset_amount'], $oldTrans['entity_id'], $oldTrans['asset_type']]);
+            
+            $pdo->prepare("INSERT INTO inv_entity_balances (entity_id, asset_type, amount) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + ?")
+                ->execute([$oldTrans['entity_id'], $oldTrans['asset_type'], $assetAmount, $assetAmount]);
+        }
+        
+        $updateStmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ?, asset_amount = ?, exchange_rate = ? WHERE id = ?");
+        $updateStmt->execute([$desc, $docNo, $date, $newTotalAmount, $assetAmount, $newRate, $id]);
+    } else {
+        $stmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ? WHERE id = ?");
+        $stmt->execute([$desc, $docNo, $date, $newTotalAmount, $id]);
+    }
 
-    // 4. Bakiye Düzeltmesi
-    // Eski tutarı çıkar, yeni tutarı ekle.
-    // Balance = Balance - OldAmount + NewAmount
-    // Örnek: Balance -100 du. OldAmount -100 du. NewAmount -120 oldu.
-    // Balance = -100 - (-100) + (-120) = 0 - 120 = -120. Doğru.
-    
+    // 4. Ana (TL) Bakiye Düzeltmesi
     $diff = $newTotalAmount - $oldTrans['amount'];
-    if ($diff != 0) {
+    if (abs($diff) > 0.0001) {
         $pdo->prepare("UPDATE inv_entities SET balance = balance + ? WHERE id = ?")
             ->execute([$diff, $oldTrans['entity_id']]);
     }
 
     $pdo->commit();
-    echo json_encode(['status' => 'success', 'message' => 'İşlem ve stoklar güncellendi']);
+    echo json_encode(['status' => 'success', 'message' => 'İşlem başarıyla güncellendi']);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {

@@ -9,14 +9,15 @@ class ProductModel {
     }
 
     public function create($data) {
-        $sql = "INSERT INTO inv_products (name, barcode, unit, stock_quantity, avg_cost) VALUES (:name, :barcode, :unit, :stock_quantity, :avg_cost)";
+        $sql = "INSERT INTO inv_products (name, barcode, unit, stock_quantity, avg_cost, satis_fiyat) VALUES (:name, :barcode, :unit, :stock_quantity, :avg_cost, :satis_fiyat)";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':name' => $data['name'],
             ':barcode' => $data['barcode'],
             ':unit' => $data['unit'] ?? 'Adet',
             ':stock_quantity' => $data['stock_quantity'] ?? 0,
-            ':avg_cost' => $data['avg_cost'] ?? 0
+            ':avg_cost' => $data['avg_cost'] ?? 0,
+            ':satis_fiyat' => $data['satis_fiyat'] ?? 0
         ]);
         return $this->pdo->lastInsertId();
     }
@@ -65,10 +66,19 @@ class ProductModel {
         ]);
     }
 
+    public function updateSalePrice($id, $newSalePrice) {
+        $sql = "UPDATE inv_products SET satis_fiyat = :price WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([
+            ':price' => $newSalePrice,
+            ':id' => $id
+        ]);
+    }
+
     // Faz 5.1: Analiz Sorguları
     public function getChartData($id) {
         // Fetch last 20 movements for analysis
-        $stmt = $this->pdo->prepare("SELECT type, unit_price, new_stock, created_at FROM inv_movements WHERE product_id = :id ORDER BY created_at ASC LIMIT 20");
+        $stmt = $this->pdo->prepare("SELECT type, unit_price, new_stock, movement_date FROM inv_movements WHERE product_id = :id ORDER BY movement_date ASC LIMIT 40");
         $stmt->execute([':id' => $id]);
         return $stmt->fetchAll();
     }

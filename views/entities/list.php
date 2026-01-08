@@ -216,8 +216,25 @@ $entities = $entityModel->getAllWithBalances();
                                 </span>
                             </td>
                             <td class="p-3 text-sm font-mono"><?php echo htmlspecialchars($entity['tax_id'] ?? '-'); ?></td>
-                            <td class="p-3 text-right font-bold font-mono <?php echo $entity['balance'] >= 0 ? 'text-green-600' : 'text-red-600'; ?>">
-                                <?php echo number_format($entity['balance'], 2); ?> ₺
+                            <td class="p-3 text-right">
+                                <div class="font-bold font-mono <?php echo $entity['balance'] >= 0 ? 'text-green-600' : 'text-red-600'; ?>">
+                                    <?php echo number_format($entity['balance'], 2); ?> ₺
+                                </div>
+                                <?php 
+                                    $assetBalances = json_decode($entity['asset_balances'] ?? '[]', true);
+                                    if(!empty($assetBalances)):
+                                ?>
+                                    <div class="flex flex-wrap justify-end gap-1 mt-1">
+                                        <?php foreach($assetBalances as $ab): if($ab['asset_type'] == 'TL' || $ab['asset_type'] == 'CREDIT_CARD' || round($ab['amount'], 2) == 0) continue; ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold <?php echo $ab['amount'] >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'; ?> border border-current opacity-80">
+                                                <?php echo number_format($ab['amount'], 2); ?>
+                                                <span class="ml-0.5 opacity-60"><?php 
+                                                    echo $ab['asset_type'] == 'USD' ? '$' : ($ab['asset_type'] == 'EUR' ? '€' : ($ab['asset_type'] == 'GOLD' ? 'Gr' : $ab['asset_type'])); 
+                                                ?></span>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="p-3 text-center">
                                 <?php if ($entity['balance'] < 0): ?>
@@ -240,6 +257,13 @@ $entities = $entityModel->getAllWithBalances();
                                        title="Düzenle">
                                         <span class="material-symbols-outlined text-xl">edit</span>
                                     </a>
+                                    <?php if($entity['id'] != 1): ?>
+                                    <button onclick="deleteEntity(<?php echo $entity['id']; ?>)" 
+                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" 
+                                            title="Sil">
+                                        <span class="material-symbols-outlined text-xl text-[20px]">delete</span>
+                                    </button>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -290,8 +314,25 @@ $entities = $entityModel->getAllWithBalances();
                                 <?php endif; ?>
                             </td>
 
-                            <td class="p-3 text-right font-bold font-mono <?php echo $entity['balance'] >= 0 ? 'text-green-600' : 'text-red-600'; ?>">
-                                <?php echo number_format($entity['balance'], 2); ?> ₺
+                            <td class="p-3 text-right">
+                                <div class="font-bold font-mono <?php echo $entity['balance'] >= 0 ? 'text-green-600' : 'text-red-600'; ?>">
+                                    <?php echo number_format($entity['balance'], 2); ?> ₺
+                                </div>
+                                <?php 
+                                    $assetBalances = json_decode($entity['asset_balances'] ?? '[]', true);
+                                    if(!empty($assetBalances)):
+                                ?>
+                                    <div class="flex flex-wrap justify-end gap-1 mt-1">
+                                        <?php foreach($assetBalances as $ab): if($ab['asset_type'] == 'TL' || $ab['asset_type'] == 'CREDIT_CARD' || round($ab['amount'], 2) == 0) continue; ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold <?php echo $ab['amount'] >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'; ?> border border-current opacity-80">
+                                                <?php echo number_format($ab['amount'], 2); ?>
+                                                <span class="ml-0.5 opacity-60"><?php 
+                                                    echo $ab['asset_type'] == 'USD' ? '$' : ($ab['asset_type'] == 'EUR' ? '€' : ($ab['asset_type'] == 'GOLD' ? 'Gr' : $ab['asset_type'])); 
+                                                ?></span>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="p-3 text-center">
                                 <div class="flex items-center justify-center gap-2">
@@ -305,6 +346,11 @@ $entities = $entityModel->getAllWithBalances();
                                        title="Düzenle">
                                         <span class="material-symbols-outlined text-xl">edit</span>
                                     </a>
+                                    <button onclick="deleteEntity(<?php echo $entity['id']; ?>)" 
+                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" 
+                                            title="Sil">
+                                        <span class="material-symbols-outlined text-xl text-[20px]">delete</span>
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -341,6 +387,27 @@ function switchTab(tab) {
         
         btnGeneral.classList.add('border-transparent', 'text-gray-500');
         btnGeneral.classList.remove('border-primary', 'text-primary');
+    }
+}
+
+async function deleteEntity(id) {
+    if (!confirm('Bu cari kaydı silmek istediğinize emin misiniz? Cari kartı gizlenecek ancak geçmiş hareketler korunacaktır.')) return;
+    
+    try {
+        const res = await fetch('<?php echo public_url('api/delete-entity'); ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        });
+        
+        const result = await res.json();
+        if (result.status === 'success') {
+            location.reload();
+        } else {
+            alert(result.message);
+        }
+    } catch (e) {
+        alert('Bir hata oluştu: ' + e.message);
     }
 }
 </script>
