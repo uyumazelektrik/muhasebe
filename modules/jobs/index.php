@@ -5,13 +5,8 @@ require_once __DIR__ . '/../../src/helpers.php';
 
 // İşleri çek
 try {
-    $sql = "SELECT i.*, u.full_name as personel_ad FROM isler i LEFT JOIN users u ON i.personel_id = u.id";
+    $sql = "SELECT i.* FROM isler i";
     $params = [];
-    
-    if (current_role() === 'personel') {
-        $sql .= " WHERE i.personel_id = ?";
-        $params[] = current_user_id();
-    }
     
     $sql .= " ORDER BY i.created_at DESC";
     $stmt = $pdo->prepare($sql);
@@ -21,8 +16,10 @@ try {
     $jobs = [];
 }
 
-// Personelleri çek (Yeni iş modalı için)
-$personnel = $pdo->query("SELECT id, full_name FROM users ORDER BY full_name ASC")->fetchAll();
+// Carileri çek (Yeni iş modalı için)
+require_once __DIR__ . '/../../src/Models/EntityModel.php';
+$entityModel = new EntityModel($pdo);
+$entities = $entityModel->getAll(); // Tüm carileri getir
 
 $pageTitle = "İş Takibi";
 include __DIR__ . '/../../views/layout/header.php';
@@ -73,25 +70,31 @@ include __DIR__ . '/../../views/layout/header.php';
                                 <h3 class="text-lg font-bold text-slate-900 dark:text-white line-clamp-1"><?php echo htmlspecialchars($job['musteri_adi']); ?></h3>
                                 <p class="text-xs text-slate-500 truncate mt-0.5"><?php echo htmlspecialchars($job['is_tanimi']); ?></p>
                             </div>
-                            <?php
-                                $statusColors = [
-                                    'Beklemede' => 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
-                                    'Devam Ediyor' => 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
-                                    'Tamamlandı' => 'bg-green-100 text-green-600 dark:bg-green-500/10 dark:text-green-400',
-                                    'İptal' => 'bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400',
-                                ];
-                                $statusColor = $statusColors[$job['durum']] ?? 'bg-slate-100 text-slate-600';
-                            ?>
-                            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider <?php echo $statusColor; ?>">
-                                <?php echo $job['durum']; ?>
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <?php
+                                    $statusColors = [
+                                        'Beklemede' => 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
+                                        'Devam Ediyor' => 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
+                                        'Tamamlandı' => 'bg-green-100 text-green-600 dark:bg-green-500/10 dark:text-green-400',
+                                        'İptal' => 'bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400',
+                                    ];
+                                    $statusColor = $statusColors[$job['durum']] ?? 'bg-slate-100 text-slate-600';
+                                ?>
+                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider <?php echo $statusColor; ?>">
+                                    <?php echo $job['durum']; ?>
+                                </span>
+                                <div class="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onclick='openEditJobModal(<?php echo json_encode($job, ENT_QUOTES); ?>)' class="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all">
+                                        <span class="material-symbols-outlined text-[18px]">edit</span>
+                                    </button>
+                                    <button onclick="deleteJob(<?php echo $job['id']; ?>)" class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all">
+                                        <span class="material-symbols-outlined text-[18px]">delete</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="space-y-3">
-                            <div class="flex items-center gap-3 text-sm">
-                                <span class="material-symbols-outlined text-slate-400">person</span>
-                                <span class="text-slate-600 dark:text-slate-400"><?php echo htmlspecialchars($job['personel_ad'] ?? 'Atanmamış'); ?></span>
-                            </div>
                             <div class="flex items-center gap-3 text-sm font-bold">
                                 <span class="material-symbols-outlined text-slate-400">payments</span>
                                 <span class="text-slate-900 dark:text-white"><?php echo number_format($job['toplam_tutar'], 2); ?> ₺</span>
@@ -113,6 +116,11 @@ include __DIR__ . '/../../views/layout/header.php';
     </main>
 </div>
 
+<!-- Select2 için gerekli kütüphaneler -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 <!-- Modal: Yeni İş Aç -->
 <div id="addJobModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
     <div class="bg-white dark:bg-card-dark w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all scale-100">
@@ -126,23 +134,18 @@ include __DIR__ . '/../../views/layout/header.php';
         <form action="<?php echo public_url('api/add-job'); ?>" method="POST" class="p-6">
             <div class="space-y-4">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Müşteri / Firma Adı</label>
-                    <input type="text" name="musteri_adi" required class="w-full bg-slate-50 dark:bg-input-dark border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-primary focus:border-primary">
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Müşteri / Firma Seçiniz</label>
+                    <select name="musteri_adi" id="entity_select" required class="w-full">
+                        <option value="">Seçiniz...</option>
+                        <?php foreach($entities as $e): ?>
+                            <option value="<?php echo htmlspecialchars($e['name']); ?>"><?php echo htmlspecialchars($e['name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">İş Tanımı</label>
                     <textarea name="is_tanimi" rows="3" required class="w-full bg-slate-50 dark:bg-input-dark border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-primary focus:border-primary"></textarea>
-                </div>
-                
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Sorumlu Personel</label>
-                    <select name="personel_id" class="w-full bg-slate-50 dark:bg-input-dark border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-primary focus:border-primary">
-                        <option value="">Seçiniz...</option>
-                        <?php foreach($personnel as $p): ?>
-                            <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['full_name']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
                 </div>
             </div>
             
@@ -153,5 +156,101 @@ include __DIR__ . '/../../views/layout/header.php';
         </form>
     </div>
 </div>
+
+<!-- Modal: İş Düzenle -->
+<div id="editJobModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+    <div class="bg-white dark:bg-card-dark w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all scale-100">
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">İş Kaydını Düzenle</h3>
+            <button onclick="document.getElementById('editJobModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 transition-colors">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        
+        <form id="editJobForm" class="p-6">
+            <input type="hidden" name="id" id="edit_job_id">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">Müşteri / Firma</label>
+                    <select name="musteri_adi" id="edit_entity_select" required class="w-full">
+                        <option value="">Seçiniz...</option>
+                        <?php foreach($entities as $e): ?>
+                            <option value="<?php echo htmlspecialchars($e['name']); ?>"><?php echo htmlspecialchars($e['name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-wider">İş Tanımı</label>
+                    <textarea name="is_tanimi" id="edit_is_tanimi" rows="3" required class="w-full bg-slate-50 dark:bg-input-dark border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-primary focus:border-primary"></textarea>
+                </div>
+            </div>
+            
+            <div class="mt-8 flex gap-3">
+                <button type="button" onclick="document.getElementById('editJobModal').classList.add('hidden')" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">İptal</button>
+                <button type="submit" class="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-blue-600 transition-colors shadow-lg shadow-primary/20">Güncelle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    $('#entity_select').select2({
+        placeholder: 'Müşteri seçin veya arayın...',
+        allowClear: true,
+        width: '100%',
+        dropdownParent: $('#addJobModal')
+    });
+
+    $('#edit_entity_select').select2({
+        placeholder: 'Müşteri seçin veya arayın...',
+        allowClear: true,
+        width: '100%',
+        dropdownParent: $('#editJobModal')
+    });
+});
+
+function openEditJobModal(job) {
+    document.getElementById('edit_job_id').value = job.id;
+    $('#edit_entity_select').val(job.musteri_adi).trigger('change');
+    document.getElementById('edit_is_tanimi').value = job.is_tanimi;
+    document.getElementById('editJobModal').classList.remove('hidden');
+}
+
+$('#editJobForm').on('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    fetch('<?php echo public_url('api/edit-job'); ?>', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(res => {
+        if(res.status === 'success') {
+            location.reload();
+        } else {
+            alert(res.message);
+        }
+    });
+});
+
+function deleteJob(id) {
+    if(!confirm('Bu iş kaydını silmek istediğinize emin misiniz? Malzeme sarfiyatları da silinecektir.')) return;
+    
+    fetch('<?php echo public_url('api/delete-job'); ?>', {
+        method: 'POST',
+        body: new URLSearchParams({id: id})
+    })
+    .then(r => r.json())
+    .then(res => {
+        if(res.status === 'success') {
+            location.reload();
+        } else {
+            alert(res.message);
+        }
+    });
+}
+</script>
 
 <?php include __DIR__ . '/../../views/layout/footer.php'; ?>

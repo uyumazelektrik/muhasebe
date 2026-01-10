@@ -37,12 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $birim_fiyat = $stok['satis_fiyat'];
+        $birim_fiyat = isset($_POST['birim_fiyat']) ? floatval($_POST['birim_fiyat']) : $stok['satis_fiyat'];
+        $islem_tarihi = !empty($_POST['islem_tarihi']) ? sanitize($_POST['islem_tarihi']) : date('Y-m-d');
         $toplam_eklenecek = $birim_fiyat * $kullanilan_miktar;
 
         // 2. is_sarfiyat'a kaydet
-        $stmt = $pdo->prepare("INSERT INTO is_sarfiyat (is_id, stok_id, kullanilan_miktar, birim_fiyat) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$is_id, $stok_id, $kullanilan_miktar, $birim_fiyat]);
+        $stmt = $pdo->prepare("INSERT INTO is_sarfiyat (is_id, stok_id, kullanilan_miktar, birim_fiyat, islem_tarihi) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([$is_id, $stok_id, $kullanilan_miktar, $birim_fiyat, $islem_tarihi]);
 
         // 3. Stoktan düş
         $stmt = $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity - ? WHERE id = ?");

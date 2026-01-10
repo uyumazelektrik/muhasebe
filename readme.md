@@ -1,90 +1,127 @@
-# Akıllı Ön Muhasebe & AI Destekli Stok Yönetim Sistemi
+# ⚡ Uyumaz Elektrik - Muhasebe & Yönetim Sistemi
 
-Bu proje, geleneksel personel takip sistemini; yapay zeka (Gemini AI) destekli fatura işleme, akıllı stok takibi ve dinamik cari yönetim modülleriyle birleştiren kapsamlı bir ERP çözümüdür.
+Bu proje, **Uyumaz Elektrik** için özel olarak geliştirilmiş; **Personel Takibi**, **Cari Hesap Yönetimi**, **Akıllı Stok Takibi** ve **İş Yönetimi (CRM)** süreçlerini tek bir çatı altında toplayan, **Yapay Zeka destekli** web tabanlı bir ERP sistemidir.
 
-## 🚀 Proje Amacı
-Sistemin temel amacı, işletmelerin manuel veri girişi yükünü azaltmak, hata payını minimize etmek ve stok/cari süreçlerini yapay zeka yardımıyla otomatize etmektir. Özellikle fatura görsellerinden otomatik veri çıkarma (OCR) ve ürün eşleştirme özellikleri projenin kalbini oluşturur.
+Proje, geleneksel muhasebe yazılımlarının aksine, **fatura görsellerinden otomatik veri işleme (OCR)** ve **akıllı gider kategorizasyonu** gibi modern özelliklerle donatılmıştır.
 
 ---
 
-## 📂 Dizin Yapısı
-Proje, modüler ve MVC yapısına yakın bir şekilde organize edilmiştir:
+## 🚀 Öne Çıkan Özellikler
 
+### 1. 🧠 Yapay Zeka (AI) Destekli Fatura İşleme
+*   **Görsel Analiz:** Fatura fotoğrafları veya PDF'leri sisteme yüklendiğinde, Google **Gemini 1.5 Flash/Pro** modelleri kullanılarak analiz edilir.
+*   **Otomatik Veri Çıkarma:** Fatura kalemleri, miktarlar, birim fiyatlar, KDV oranları ve toplam tutarlar %99 doğrulukla dijitalleştirilir.
+*   **Akıllı Stok Eşleştirme:** Çıkarılan ürün isimleri, veritabanındaki stok kartlarıyla (Fuzzy Search & Mapping hafızası) otomatik eşleştirilir.
+*   **Cari Bakiye Entegrasyonu:** Fatura onaylandığında tedarikçi bakiyesi ve stok miktarları anlık güncellenir.
+
+### 2. 📦 Stok & Depo Yönetimi
+*   **Kritik Stok Takibi:** Minimum seviyenin altına düşen ürünler için dashboard uyarıları.
+*   **AVCO Maliyetleme:** "Ağırlıklı Ortalama Maliyet" yöntemi ile stok maliyetlerinin dinamik hesaplanması.
+*   **Hızlı Fiyat Sorgula:** Barkod okutarak veya ürün adı girerek anlık fiyat ve stok durumu sorgulama ekranı.
+*   **Tarihçeli Hareketler:** Ürün bazında tüm giriş-çıkışların (Fatura, Sarfiyat, İade) detaylı loglanması.
+
+### 3. 💰 Cari & Finans Yönetimi (Ön Muhasebe)
+*   **Cari Hesaplar:** Müşteri ve Tedarikçi bakiyelerinin (Borç/Alacak) takibi.
+*   **Kasa & Banka:** İşletme kasalarının ve banka hesaplarının yönetimi, hesaplar arası transfer (Virman).
+*   **Gider Yönetimi:** İşletme giderlerinin (Yemek, Yakıt, Kira vb.) kategorize edilerek takibi.
+*   **Detaylı Ekstre:** Müşterilerle paylaşılabilecek, işlem bazlı detaylı cari ekstreler.
+
+### 4. 👷 Personel & İK Yönetimi
+*   **Puantaj Takibi:** QR kod veya manuel giriş ile personelin işe giriş-çıkış saatlerinin kaydı.
+*   **Otomatik Maaş Hesaplama:** Mesai saatleri, gecikme cezaları ve hafta tatili hakedişlerine göre net maaşın otomatik hesaplanması.
+*   **Avans & Ödeme Takibi:** Personele yapılan ödemelerin cari hesap mantığıyla işlenmesi.
+
+### 5. 🛠 Saha & İş Takibi
+*   **Proje Yönetimi:** Müşterilere yapılan işlerin (Montaj, Arıza vb.) proje bazlı takibi.
+*   **Malzeme Sarfiyatı:** Projelerde kullanılan malzemelerin stoktan düşülmesi ve proje maliyetine yansıtılması.
+
+---
+
+## 📂 Teknik Altyapı ve Klasör Yapısı
+
+Proje, **Native PHP** kullanılarak, hafif siklet bir **MVC (Model-View-Controller)** mimarisiyle geliştirilmiştir. Frontend tarafında modern bir görünüm için **Tailwind CSS** kullanılmıştır.
+
+### Temel Dizinler
 ```text
-proje/
-├── assets/             # CSS (Tailwind), JS ve Medya dosyaları
-├── config/             # Veritabanı bağlantı yapılandırması (db.php)
-├── database/           # SQL şemaları ve güncelleme betikleri
-├── modules/            # Özelleşmiş iş modülleri (Stok, İş Takibi, Finans)
-├── public/             # Dışarıya açık sayfalar (Müşteri görüntüleme vb.)
-├── src/                # Çekirdek PHP mantığı
-│   ├── Controllers/    # Rotaları yöneten kontrolörler (InvoiceController vb.)
-│   ├── Models/         # Veritabanı modelleri (ProductModel, EntityModel vb.)
-│   ├── Services/       # Dış servis entegrasyonları (GeminiService.php)
-│   └── helpers.php     # Global yardımcı fonksiyonlar
-├── views/              # Arayüz dosyaları (HTML/PHP Karışık)
-│   ├── invoice/        # Fatura yükleme ve doğrulama ekranları
-│   ├── entities/       # Cari yönetim ekranları
-│   └── layout/         # Header/Footer gibi ortak şablonlar
-├── .env                # API Anahtarları ve Hassas Ayarlar
-├── index.php           # Ana Router (Yönlendirici)
-└── readme.md           # Sistem dökümantasyonu
+/proje
+├── .env                # Veritabanı ve API anahtarları yapılandırması
+├── index.php           # Merkezi Router (Tüm istekler buradan dağıtılır)
+├── config/             # Konfigürasyon dosyaları (Veritabanı bağlantısı vb.)
+├── src/                # Backend Mantığı
+│   ├── controllers/    # İstekleri karşılayan ve işleyen sınıflar (API & Sayfalar)
+│   ├── models/         # Veritabanı işlemleri (ORM benzeri yapılar)
+│   └── Services/       # Harici servis entegrasyonları (GeminiService.php vb.)
+├── views/              # Kullanıcı Arayüzü (HTML/PHP)
+│   ├── layout/         # Ortak şablonlar (Header, Sidebar, Footer)
+│   ├── entities/       # Cari modülü görünümleri
+│   ├── invoice/        # Fatura yükleme ekranları
+│   └── ...
+├── modules/            # Büyük özellik paketleri
+│   ├── finance/        # Finansal raporlar ve cüzdan araçları
+│   ├── jobs/           # İş takibi modülü dosyaları
+│   └── inventory/      # Stok listeleme ve detay sayfaları
+├── assets/             # Statik dosyalar (Boş - CDN kullanılıyor)
+└── database/           # Veritabanı şemaları ve SQL dosyaları
 ```
 
----
-
-## 🗄️ Veritabanı Yapısı
-Sistem, ilişkisel bir MySQL veritabanı üzerinde çalışır. Temel tablolar şunlardır:
-
-### 1. Stok ve Hareketler
-*   **`inv_products`**: Ürünlerin adı, barkodu, birimi, ortalama maliyeti, son alış fiyatı ve stok miktarı bilgisini tutar.
-*   **`inv_movements`**: Her türlü stok giriş-çıkış hareketini (fatura, sarfiyat, iade) `tax_rate` ve `tax_amount` detaylarıyla kaydeder.
-*   **`inv_mapping`**: Yapay zekanın faturada okuduğu metinler ile stok kartları arasındaki eşleşmeleri hafızaya alır.
-
-### 2. Cari ve Finans
-*   **`inv_entities`**: Tedarikçiler, müşteriler ve personel bilgilerini tutar. `balance` (cari bakiye) bilgisini anlık günceller.
-*   **`inv_entity_transactions`**: Cari ekstre kayıtlarını tutar. Fatura bazlı borç/alacak hareketlerini `tax_total` ve `discount_total` bazlı belgelerle saklar.
-
-### 3. Personel ve Devamlılık
-*   **`users`**: Kullanıcı rolleri (Admin/Personel) ve temel bilgiler.
-*   **`attendance`**: Giriş-çıkış saatleri, mesai ve gecikme takibi.
+### Kullanılan Teknolojiler
+*   **Backend:** PHP 8.x
+*   **Veritabanı:** MySQL / MariaDB
+*   **Frontend:** HTML5, JavaScript (Vanilla), Tailwind CSS (CDN)
+*   **Ikon Seti:** Google Material Symbols
+*   **AI Engine:** Google Gemini API (1.5 Flash & Pro)
 
 ---
 
-## 🔄 İş Akışı ve Çalışma Mantığı
+## ⚙️ Kurulum ve Yapılandırma
 
-### 1. AI Destekli Fatura İşleme (OCR)
-1.  **Yükleme:** Kullanıcı bir fatura fotoğrafı veya PDF'i sisteme yükler.
-2.  **Analiz (Gemini AI):** `GeminiService`, görseli analiz ederek faturan tüm kalemlerini (Miktar, Birim, İskontolu Net Fiyat, KDV Oranı) JSON formatında çıkarır.
-3.  **Akıllı Eşleştirme:** Sistem, faturadaki her bir satırı veritabanındaki mevcut stok kartlarıyla (`mapping` hafızası veya fuzzy search ile) eşleştirmeye çalışır.
-4.  **Doğrulama:** Kullanıcı ekranda yapay zekanın çıkardığı verileri ve eşleşmeleri kontrol eder, gerekirse düzeltir.
-5.  **Kayıt:** Onaylandığında;
-    *   Stok miktarları güncellenir.
-    *   Ağırlıklı ortalama maliyet (AVCO) otomatik yeniden hesaplanır.
-    *   İlgili cari karta (Tedarikçi) borç olarak işlenir.
-    *   Stok hareket günlüğü (Movements) oluşturulur.
+Bu proje **XAMPP**, **WAMP** veya herhangi bir LAMP yığını üzerinde çalıştırılabilir.
 
-### 2. Stok ve Operasyon
-*   **Sarfiyat Girişi:** Personel sahada kullandığı malzemeleri iş kartına eklediğinde stoktan anlık düşüş yapılır ve işin maliyeti güncellenir.
-*   **Kritik Stok Uyarıları:** Seviyenin altına düşen ürünler Dashboard üzerinde yöneticiye raporlanır.
+### 1. Dosya Kurulumu
+Proje dosyalarını web sunucunuzun kök dizinine (örn: `C:\xampp\htdocs\proje`) kopyalayın.
+
+### 2. Veritabanı Ayarları
+1.  MySQL sunucunuzda yeni bir veritabanı oluşturun (örn: `muhasebe_db`).
+2.  `database/` klasöründeki SQL dosyalarını bu veritabanına içe aktarın (Eğer mevcutsa).
+3.  Ana dizindeki `.env` dosyasını düzenleyin (Yoksa oluşturun):
+
+```ini
+DB_HOST=localhost
+DB_NAME=muhasebe_db
+DB_USER=root
+DB_PASS=
+GEMINI_API_KEY=AIzaSy... (Google AI Studio API Key)
+```
+
+### 3. Çalıştırma
+Tarayıcınızdan `http://localhost/proje` adresine giderek sistemi başlatın.
+*   **Varsayılan Admin:** (Sistem yöneticisinden temin ediniz veya veritabanından `users` tablosunu kontrol ediniz).
+
+---
+
+## 📖 Kullanım Senaryoları
+
+### Fatura Yükleme (AI OCR)
+1.  Menüden **"Fatura İşle"** sayfasına gidin.
+2.  Faturanın fotoğrafını yükleyin.
+3.  Sistem 5-10 saniye içinde faturayı okuyacak ve onay ekranını açacaktır.
+4.  Eşleşmeyen ürünleri listeden seçin veya yeni stok kartı olarak tanımlayın.
+5.  **"Onayla"** butonuna bastığınızda stoklar artar ve cari borçlanır.
+
+### Personel Maaş Hesaplama
+1.  Personeller QR kod ile veya **"Giriş-Çıkış Kayıtları"** sayfasından günlük girişlerini yapar.
+2.  Ay sonunda **"Maaş & Hakediş"** sayfasına gidildiğinde sistem otomatik olarak;
+    *   (Toplam Çalışma Günü x Günlük Ücret) + (Mesai Saati x Mesai Ücreti) - (Avanslar)
+    hesabını yaparak ödenecek tutarı çıkarır.
 
 ---
 
-## 🛠 Teknik Detaylar
-*   **AI Engine:** Google Gemini 1.5 Pro / Flash (Çoklu model fallback yapısı).
-*   **Frontend:** Modern ve responsive tasarım için Tailwind CSS & Material Symbols.
-*   **Güvenlik:** Role-Based Access Control (RBAC). Admin tüm maliyetleri görürken, personel sadece satış fiyatlarını ve operasyonel verileri görür.
-*   **Hata Yönetimi:** API kesintilerine karşı fallback modelleri ve detaylı debug paneli entegrasyonu.
+## 🔄 Geliştirici Notları
+
+*   **Routing:** Sistem `index.php` üzerinden custom bir routing mekanizması kullanır. Yeni bir sayfa eklemek için `index.php` içerisindeki `switch-case` yapısına yeni bir `case` eklemeniz yeterlidir.
+*   **Tailwind:** CSS framework'ü CDN üzerinden `script` etiketi ile dahil edilmiştir (`views/layout/header.php`). `tailwind.config` yine bu dosyanın içindedir.
+*   **API:** `src/controllers/api/` altında AJAX isteklerini karşılayan JSON yanıtlı endpoint'ler bulunur.
 
 ---
 
-## 🎯 Temel Özellikler
-*   ✅ Görselden %99 doğrulukla fatura kalemlerini okuma.
-*   ✅ İskonto ve KDV hesaplamalarının otomatik yapılması.
-*   ✅ Ağırlıklı Ortalama Maliyet (AVCO) takibi.
-*   ✅ Personel maaş, mesai ve finansal profil yönetimi.
-*   ✅ Müşterilere özel "Cari Ekstre" paylaşım linkleri (Public Token).
-*   ✅ Barkod okutarak hızlı fiyat ve stok sorgulama.
-
----
-*Bu sistem Sürekli Geliştirme (CI) aşamasındadır ve yeni nesil AI yetenekleriyle güncellenmeye devam etmektedir.*
+*Son Güncelleme: 10 Ocak 2026*

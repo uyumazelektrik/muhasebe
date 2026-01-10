@@ -186,7 +186,12 @@ class EntityModel {
              $entityName = $this->pdo->query("SELECT name FROM inv_entities WHERE id = " . intval($entityId))->fetchColumn();
              $virmanDesc = "VİRMAN: $entityName işlemi karşılığı";
              
-             $this->updateAssetBalance($transferEntityId, -$amount, $assetType, $type, $virmanDesc, $transactionDate, $documentNo, $rate, null, true, $installmentCount, 0, null, $dueDate, $finalParentId);
+             // İşlem tipini tersine çevir (Tahsilat <-> Ödeme)
+             $targetType = $type;
+             if ($type === 'tahsilat') $targetType = 'odeme';
+             elseif ($type === 'odeme') $targetType = 'tahsilat';
+
+             $this->updateAssetBalance($transferEntityId, -$amount, $assetType, $targetType, $virmanDesc, $transactionDate, $documentNo, $rate, null, true, $installmentCount, 0, null, $dueDate, $finalParentId);
         }
 
         return $finalParentId;

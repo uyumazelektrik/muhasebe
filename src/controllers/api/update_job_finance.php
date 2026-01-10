@@ -10,9 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tax_rate = floatval($_POST['tax_rate']);
     $invoice_status = sanitize($_POST['invoice_status']);
 
+    $tax_included = intval($_POST['tax_included']);
+    $job_date = !empty($_POST['job_date']) ? $_POST['job_date'] : date('Y-m-d');
+
     try {
-        $stmt = $pdo->prepare("UPDATE isler SET tax_rate = ?, invoice_status = ? WHERE id = ?");
-        $stmt->execute([$tax_rate, $invoice_status, $id]);
+        $stmt = $pdo->prepare("UPDATE isler SET tax_rate = ?, invoice_status = ?, tax_included = ?, job_date = ? WHERE id = ?");
+        $stmt->execute([$tax_rate, $invoice_status, $tax_included, $job_date, $id]);
         
         redirect_with_message(public_url('job-detail?id=' . $id), 'success', 'Finansal ayarlar güncellendi.');
     } catch (PDOException $e) {

@@ -76,11 +76,13 @@ class GeminiService {
             ],
             \"total_amount\": 19434.41, // Faturadaki 'Ödenecek Tutar'
             \"total_tax\": 3239.07, // Faturadaki 'Hesaplanan KDV'
-            \"total_discount\": 23641.58, // faturadaki 'Toplam İskonto'
+            \"total_discount\": 0.00,
             \"invoice_date\": \"2025-12-23\",
             \"invoice_no\": \"YE12025000029875\",
-            \"supplier_name\": \"YILDIRIM ELEKTRİK\",
+            \"supplier_name\": \"YILDIRIM ELEKTRİK\", // Faturayı düzenleyen / Satan firma
             \"supplier_tax_id\": \"9480042687\",
+            \"buyer_name\": \"ALICI FİRMA ADI\", // Faturanın kesildiği / Satın alan firma
+            \"buyer_tax_id\": \"1234567890\",
             \"payment_status\": \"unpaid\"
         }";
 
@@ -146,5 +148,16 @@ class GeminiService {
         $data['_model_used'] = $model;
 
         return $data;
+    }
+    public function analyzeImage($imagePath, $systemInstruction) {
+        if (empty($this->apiKey)) {
+            throw new Exception("Gemini API anahtarı eksik.");
+        }
+
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($imagePath);
+        $base64Data = base64_encode(file_get_contents($imagePath));
+
+        return $this->getWorkingModel($base64Data, $mimeType, $systemInstruction);
     }
 }

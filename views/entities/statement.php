@@ -172,8 +172,8 @@ $wallets = $walletModel->getAllActive();
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">İşlem Tipi</label>
                                 <select name="type" class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-input-dark dark:border-gray-700 font-bold" required>
-                                    <option value="tahsilat" class="text-green-600 font-bold">TAHSİLAT (+)</option>
-                                    <option value="odeme" class="text-red-600 font-bold">ÖDEME (-)</option>
+                                    <option value="tahsilat" class="text-green-600 font-bold">TAHSİLAT (-)</option>
+                                    <option value="odeme" class="text-red-600 font-bold">ÖDEME (+)</option>
                                     <option value="diger">DİĞER</option>
                                 </select>
                             </div>
@@ -457,6 +457,27 @@ $wallets = $walletModel->getAllActive();
                         <h4 class="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Açıklama</h4>
                         <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded border dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm whitespace-pre-wrap leading-relaxed" id="detDesc"></div>
                         <div id="detInstallmentInfo"></div>
+                        
+                        <!-- Finansal Detaylar -->
+                        <div id="detFinancials" class="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700 hidden">
+                             <div class="flex justify-between items-center mb-2">
+                                 <span class="text-xs text-gray-500 font-bold uppercase">Ara Toplam (Matrah + İndirim)</span>
+                                 <span class="text-sm font-mono text-gray-700 dark:text-gray-300" id="detSubTotal">0.00 ₺</span>
+                             </div>
+                             <div class="flex justify-between items-center mb-2">
+                                 <span class="text-xs text-red-500 font-bold uppercase">İndirim</span>
+                                 <span class="text-sm font-mono text-red-600 font-bold" id="detDiscount">0.00 ₺</span>
+                             </div>
+                             <div class="flex justify-between items-center mb-2">
+                                 <span class="text-xs text-blue-500 font-bold uppercase">KDV (<span id="detTaxRate">0</span>%) <span id="detTaxStatus" class="text-[10px] bg-gray-200 px-1 rounded ml-1"></span></span>
+                                 <span class="text-sm font-mono text-blue-600 font-bold" id="detTaxAmount">0.00 ₺</span>
+                             </div>
+                             <div class="border-t dark:border-gray-700 my-2"></div>
+                             <div class="flex justify-between items-center">
+                                 <span class="text-sm text-gray-900 dark:text-white font-black uppercase">Genel Toplam</span>
+                                 <span class="text-lg font-mono font-black text-gray-900 dark:text-white" id="detFinalTotal">0.00 ₺</span>
+                             </div>
+                        </div>
                     </div>
                 </div>
 
@@ -488,6 +509,26 @@ $wallets = $walletModel->getAllActive();
                                 <input type="number" step="0.0001" id="editRateInput" class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-input-dark dark:border-gray-700">
                              </div>
                          </div>
+                         
+                         <!-- Vergi ve İndirim Ayarları (Sadece Faturalar İçin Görünebilir) -->
+                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="editTaxRow">
+                             <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Toplam İndirim</label>
+                                <input type="number" step="0.01" id="editDiscountInput" class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-input-dark dark:border-gray-700">
+                             </div>
+                             <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">KDV Oranı (%)</label>
+                                <input type="number" step="0.01" id="editTaxRateInput" class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-input-dark dark:border-gray-700">
+                             </div>
+                             <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">KDV Durumu</label>
+                                <select id="editTaxIncludedInput" class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-input-dark dark:border-gray-700 font-bold">
+                                    <option value="1">KDV Dahil (İçinde)</option>
+                                    <option value="0">KDV Hariç (+KDV)</option>
+                                </select>
+                             </div>
+                         </div>
+
                          <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Açıklama</label>
                             <textarea id="editDescInput" rows="3" class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-input-dark dark:border-gray-700"></textarea>
@@ -649,12 +690,34 @@ function openDetail(id) {
                 document.getElementById('editAssetTypeInput').value = tr.asset_type || 'TL';
                 document.getElementById('editRateInput').value = tr.exchange_rate || 1;
                 
-                // Eğer fatura ise tutarı kalemlerden hesaplayacağı için bu alanı kilitliyoruz (veya gizliyoruz)
                 if (tr.type === 'fatura') {
                     document.getElementById('editAmountRow').classList.add('hidden');
+                    document.getElementById('editTaxRow').classList.remove('hidden'); // Faturada vergi ayarları açık
+                    document.getElementById('detFinancials').classList.remove('hidden'); // Detayda finansallar açık
                 } else {
                     document.getElementById('editAmountRow').classList.remove('hidden');
+                    document.getElementById('editTaxRow').classList.add('hidden'); // Diğerlerinde kapalı
+                    document.getElementById('detFinancials').classList.add('hidden');
                 }
+                
+                // Populate Financials
+                const taxRate = parseFloat(tr.tax_rate || 0);
+                const discount = parseFloat(tr.discount_amount || 0);
+                const taxAmount = parseFloat(tr.tax_amount || 0);
+                const finalTotal = Math.abs(parseFloat(tr.amount));
+                const subTotal = finalTotal - taxAmount + discount; // Approximate reverse calc for display
+                
+                document.getElementById('detSubTotal').textContent = subTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+                document.getElementById('detDiscount').textContent = discount.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+                document.getElementById('detTaxRate').textContent = taxRate;
+                document.getElementById('detTaxAmount').textContent = taxAmount.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+                document.getElementById('detFinalTotal').textContent = finalTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+                document.getElementById('detTaxStatus').textContent = (tr.tax_included == 1) ? 'Dahil' : 'Hariç';
+                
+                // Edit Inputs populate
+                document.getElementById('editDiscountInput').value = discount;
+                document.getElementById('editTaxRateInput').value = taxRate;
+                document.getElementById('editTaxIncludedInput').value = tr.tax_included;
                 
                 // Render Items
                 renderItems(currentItems, false);
@@ -796,14 +859,20 @@ function saveEdit(e) {
     const desc = document.getElementById('editDescInput').value;
     const amount = document.getElementById('editAmountInput').value;
     const rate = document.getElementById('editRateInput').value;
+    const discount = document.getElementById('editDiscountInput').value;
+    const taxRate = document.getElementById('editTaxRateInput').value;
+    const taxIncluded = document.getElementById('editTaxIncludedInput').value;
     
     const payload = {
-        id, 
-        transaction_date: date, 
-        document_no: docNo, 
+        id: id,
+        transaction_date: date,
+        document_no: docNo,
         description: desc,
         amount: amount,
         exchange_rate: rate,
+        discount_amount: discount,
+        tax_rate: taxRate,
+        tax_included: taxIncluded,
         items: currentItems // Send updated items
     };
     
@@ -988,9 +1057,12 @@ function saveQuickTransaction(e) {
     
     let finalAmount = parseFloat(data.amount);
     if (data.type === 'tahsilat') {
-        finalAmount = -finalAmount;
+        finalAmount = -Math.abs(finalAmount); // Tahsilat her zaman eksi (Bakiyeyi azaltır)
+    } else if (data.type === 'odeme') {
+        finalAmount = Math.abs(finalAmount);  // Ödeme her zaman artı (Bakiyeyi artırır)
     } else {
-        finalAmount = Math.abs(finalAmount);
+        // 'diger' tipinde kullanıcının girdiği işareti koru
+        finalAmount = parseFloat(data.amount);
     }
 
     const payload = {

@@ -116,6 +116,47 @@ include __DIR__ . '/../../views/layout/header.php';
                 </p>
             </div>
 
+            <!-- Personel Bilgileri (Sadece tip 'staff' ise görünür) -->
+            <div id="staff_fields" class="hidden space-y-6 border-t dark:border-border-dark pt-6">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">badge</span>
+                    Sistem Giriş Bilgileri
+                </h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                            Kullanıcı Adı <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" name="username" id="username"
+                               class="w-full px-4 py-2 border dark:border-border-dark rounded-lg bg-white dark:bg-input-dark text-gray-900 dark:text-white focus:ring-primary focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                            Şifre <span class="text-red-500">*</span>
+                        </label>
+                        <input type="password" name="password" id="password"
+                               class="w-full px-4 py-2 border dark:border-border-dark rounded-lg bg-white dark:bg-input-dark text-gray-900 dark:text-white focus:ring-primary focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                            Yetki <span class="text-red-500">*</span>
+                        </label>
+                        <select name="role" class="w-full px-4 py-2 border dark:border-border-dark rounded-lg bg-white dark:bg-input-dark text-gray-900 dark:text-white focus:ring-primary focus:border-primary">
+                            <option value="personel">Personel</option>
+                            <option value="admin">Yönetici</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                            Saatlik Ücret
+                        </label>
+                        <input type="number" step="0.01" name="hourly_rate" value="0.00"
+                               class="w-full px-4 py-2 border dark:border-border-dark rounded-lg bg-white dark:bg-input-dark text-gray-900 dark:text-white focus:ring-primary focus:border-primary font-mono">
+                    </div>
+                </div>
+            </div>
+
             <!-- Butonlar -->
             <div class="flex justify-end gap-4 pt-6 border-t dark:border-border-dark">
                 <a href="<?php echo public_url('entities'); ?>" 
@@ -131,5 +172,25 @@ include __DIR__ . '/../../views/layout/header.php';
         </form>
     </div>
 </div>
+
+<script>
+document.querySelectorAll('input[name="type"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const staffFields = document.getElementById('staff_fields');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        
+        if (this.value === 'staff') {
+            staffFields.classList.remove('hidden');
+            usernameInput.setAttribute('required', 'required');
+            passwordInput.setAttribute('required', 'required');
+        } else {
+            staffFields.classList.add('hidden');
+            usernameInput.removeAttribute('required');
+            passwordInput.removeAttribute('required');
+        }
+    });
+});
+</script>
 
 <?php include __DIR__ . '/../../views/layout/footer.php'; ?>

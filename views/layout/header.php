@@ -38,6 +38,47 @@
         ::-webkit-scrollbar-track { background: #101622; }
         ::-webkit-scrollbar-thumb { background: #282e39; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #3a4250; }
+
+        /* Select2 Dark Mode Fix */
+        .select2-container--default .select2-selection--single {
+            background-color: #282e39 !important;
+            border-color: #282e39 !important;
+            height: 42px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: #f1f5f9 !important;
+            padding-left: 12px !important;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px !important;
+        }
+        .select2-dropdown {
+            background-color: #151a25 !important;
+            border-color: #282e39 !important;
+            color: #f1f5f9 !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4) !important;
+        }
+        .select2-container--default .select2-search--dropdown .select2-search__field {
+            background-color: #282e39 !important;
+            border-color: #3f4859 !important;
+            color: #f1f5f9 !important;
+            border-radius: 6px !important;
+        }
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: #135bec !important;
+            color: white !important;
+        }
+        .select2-results__option {
+            padding: 8px 12px !important;
+        }
+        .select2-container--default .select2-results__option[aria-selected="true"] {
+            background-color: #1c2433 !important;
+        }
+        .select2-container--default .select2-results__option--selected {
+             background-color: #1c2433 !important;
+        }
     </style>
 </head>
 <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex font-display overflow-x-hidden w-full relative">
@@ -46,7 +87,7 @@
 <div id="sidebar-overlay" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-black/60 z-40 hidden transition-opacity duration-300"></div>
 
 <!-- Sidebar -->
-<aside id="main-sidebar" class="w-64 bg-sidebar-dark border-r border-slate-200 dark:border-slate-800 flex-col fixed inset-y-0 left-0 z-50 -translate-x-full md:translate-x-0 md:static md:flex shrink-0 transition-transform duration-300 h-full">
+<aside id="main-sidebar" class="w-64 bg-sidebar-dark border-r border-slate-200 dark:border-slate-800 flex flex-col fixed inset-y-0 left-0 z-50 -translate-x-full md:translate-x-0 md:static md:flex shrink-0 transition-transform duration-300 h-[100dvh]">
     <div class="p-6 pb-2 flex items-center justify-between">
         <div class="flex flex-col">
             <h1 class="text-white text-xl font-bold leading-normal tracking-tight">PersonelTakip</h1>
@@ -56,7 +97,7 @@
             <span class="material-symbols-outlined">close</span>
         </button>
     </div>
-    <nav class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-1">
+    <nav class="flex-1 overflow-y-auto px-4 py-4 pb-24 md:pb-4 flex flex-col gap-1">
         
         <!-- Ana Menü -->
         <div class="px-3 mb-2">

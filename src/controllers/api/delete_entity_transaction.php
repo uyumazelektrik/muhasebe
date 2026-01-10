@@ -52,13 +52,46 @@ try {
             $walletModel->updateBalance($lt['wallet_id'], -$lt['amount']);
         }
 
-        // D. İşlemi sil
+        // D. Varsa Fatura Kalemlerini (inv_movements) Bul ve Stokları Geri Al (Revert)
+        if (!empty($lt['document_no'])) {
+            // Önce hareketleri çek
+            $stmtMoves = $pdo->prepare("SELECT * FROM inv_movements WHERE document_no = ?");
+            $stmtMoves->execute([$lt['document_no']]);
+            $moves = $stmtMoves->fetchAll(PDO::FETCH_ASSOC);
+
+            // DEBUG LOG
+            file_put_contents(__DIR__ . '/../../../delete_debug.log', print_r($moves, true), FILE_APPEND);
+
+            foreach ($moves as $move) {
+                if (!$move['product_id']) continue;
+
+                // Hareketi tersine çevir
+                // Eğer satış (sale/out_invoice) ise, silindiğinde stok artmalı (+).
+                // Eğer alış (purchase/in_invoice) ise, silindiğinde stok azalmalı (-).
+                
+                $qty = floatval($move['quantity']);
+                
+                if (in_array($move['type'], ['sale', 'out_invoice', 'production_out'])) {
+                    $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity + ? WHERE id = ?")
+                        ->execute([$qty, $move['product_id']]);
+                } elseif (in_array($move['type'], ['purchase', 'in_invoice', 'stock_in'])) {
+                    $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity - ? WHERE id = ?")
+                        ->execute([$qty, $move['product_id']]);
+                }
+            }
+
+            // Sonra hareketleri sil
+            $delMovStmt = $pdo->prepare("DELETE FROM inv_movements WHERE document_no = ?");
+            $delMovStmt->execute([$lt['document_no']]);
+        }
+
+        // E. İşlemi sil
         $delStmt = $pdo->prepare("DELETE FROM inv_entity_transactions WHERE id = ?");
         $delStmt->execute([$lt['id']]);
     }
-
+    
     $pdo->commit();
-    echo json_encode(['status' => 'success', 'message' => 'İşlem ve varsa ilişkili tüm kayıtlar silindi.']);
+    echo json_encode(['status' => 'success', 'message' => 'İşlem silindi ve stoklar geri alındı.']);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {

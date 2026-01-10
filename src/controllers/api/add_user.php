@@ -14,11 +14,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
     try {
-        $stmt = $pdo->prepare("INSERT INTO users (full_name, username, password, role, hourly_rate, annual_leave_days) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$full_name, $username, $hashed_password, $role, $hourly_rate, $annual_leave_days]);
+        $pdo->beginTransaction();
+
+        // 1. Önce inv_entities tarafında oluştur (veya bul)
+        require_once __DIR__ . '/../../Models/EntityModel.php';
+        $entityModel = new EntityModel($pdo);
+        $entity = $entityModel->findOrCreate($full_name, null, 'staff');
+        $entity_id = $entity['id'];
+
+        // 2. users tablosuna ekle
+        $stmt = $pdo->prepare("INSERT INTO users (entity_id, full_name, username, password, role, hourly_rate, annual_leave_days) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$entity_id, $full_name, $username, $hashed_password, $role, $hourly_rate, $annual_leave_days]);
         
+        $pdo->commit();
         redirect(public_url('users'));
     } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         die("Hata: " . $e->getMessage());
     }
 } else {

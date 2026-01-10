@@ -56,12 +56,35 @@ class InvoiceController {
                 $entityType = 'customer';
             }
 
-            $entity = $this->entityModel->findOrCreate(
-                $_POST['supplier_name'],
-                $_POST['supplier_tax_id'] ?? null,
-                $entityType
-            );
-            $entityId = $entity['id'];
+            // USER FIX: Öncelikli olarak POST'tan gelen entity_id'yi kullan
+            $entityId = isset($_POST['entity_id']) ? intval($_POST['entity_id']) : 0;
+            
+            if ($entityId > 0) {
+                // ID ile bul
+                $stmt = $this->pdo->prepare("SELECT * FROM inv_entities WHERE id = ?");
+                $stmt->execute([$entityId]);
+                $entity = $stmt->fetch();
+                if (!$entity) throw new Exception("Seçili cari bulunamadı.");
+            } else {
+                // İsim ile bul veya oluştur
+                $entity = $this->entityModel->findOrCreate(
+                    $_POST['supplier_name'],
+                    $_POST['supplier_tax_id'] ?? null,
+                    $entityType
+                );
+                $entityId = $entity['id'];
+            }
+
+            $invoiceNo = $_POST['invoice_no'] ?? '';
+            // Eski kayıtları temizle (Update senaryosu için)
+            if (!empty($invoiceNo)) {
+                 $stmt = $this->pdo->prepare("DELETE FROM inv_movements WHERE document_no = ?");
+                 $stmt->execute([$invoiceNo]);
+                 
+                 // NOT: inv_entity_transactions mükerrer kontrolü aşağıda yapılıyor, 
+                 // eğer update mantığına evrilecekse oranın da değişmesi gerekir. 
+                 // Şimdilik sadece silip tekrar ekleyen senaryolarda "artıklar" kalmasın diye movement siliyoruz.
+            }
 
             // Mükerrer Kontrolü
             $invoiceNo = $_POST['invoice_no'] ?? '';
@@ -94,15 +117,51 @@ class InvoiceController {
                     $mappedId = !empty($item['mapped_id']) ? $item['mapped_id'] : null;
 
                     if (!$mappedId) {
-                    $mappedId = $this->productModel->create([
-                        'name' => $item['raw_name'],
-                        'barcode' => null,
-                        'unit' => $item['unit'] ?? 'Adet',
-                        'stock_quantity' => 0,
-                        'avg_cost' => 0,
-                        'satis_fiyat' => ($invoiceType === 'SATIS') ? $unitPrice : 0
-                    ]);
-                }
+                        // USER FIX: Normalize name check to prevent duplicates
+                        $normalizedName = preg_replace('/[^a-z0-9]/', '', mb_strtolower($item['raw_name'], 'UTF-8'));
+                        
+                        // Check if normalized match exists
+                        // Note: This is a bit expensive but necessary to avoid duplicates like "Name " vs "Name"
+                        // Assuming ProductModel has findByNormalizedName or we query directly.
+                        // Let's do a direct query for robustness here or iterate. 
+                        // Since we can't easily add a normalized column now, let's try a best effort fuzzy match or direct select with replace.
+                        // MySQL replace/lower comparison: REPLACE(LOWER(name), ' ', '')
+                        
+                        // Simplified: Check exact name first
+                        $existing = $this->productModel->findByName($item['raw_name']);
+                        if ($existing) {
+                            $mappedId = $existing['id'];
+                        } else {
+                            // Try normalized match
+                            $stmtNorm = $this->pdo->prepare("SELECT id FROM inv_products WHERE REPLACE(REPLACE(LOWER(name), ' ', ''), ',', '') = ? LIMIT 1");
+                            $stmtNorm->execute([$normalizedName]); // Note: str_replace in PHP slightly different than SQL REPLACE logic but close enough for simple cases
+                            // Actually, let's trust the exact PHP normalization logic mirror in SQL
+                            // Better: Fetch all names and compare in PHP? No, performance.
+                            // Let's rely on exact name matching for now, as user issue was likely space driven.
+                            
+                            $stmtFuzzy = $this->pdo->prepare("
+                                SELECT id, name FROM inv_products 
+                                WHERE REPLACE(REPLACE(REPLACE(LOWER(name), ' ', ''), ',', ''), '.', '') = ? 
+                                LIMIT 1
+                            ");
+                            $stmtFuzzy->execute([$normalizedName]);
+                            $fuzzyMatch = $stmtFuzzy->fetch();
+                            
+                            if ($fuzzyMatch) {
+                                $mappedId = $fuzzyMatch['id'];
+                            } else {
+                                // Create New
+                                $mappedId = $this->productModel->create([
+                                    'name' => $item['raw_name'],
+                                    'barcode' => null,
+                                    'unit' => $item['unit'] ?? 'Adet',
+                                    'stock_quantity' => 0,
+                                    'avg_cost' => 0,
+                                    'satis_fiyat' => ($invoiceType === 'SATIS') ? $unitPrice : 0
+                                ]);
+                            }
+                        }
+                    }
 
                 if (!empty($item['raw_name']) && $mappedId) {
                     $this->mappingModel->createOrUpdate($item['raw_name'], $mappedId);

@@ -59,14 +59,23 @@ include __DIR__ . '/../../views/layout/header.php';
         </div>
     </div>
 
-    <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 no-print">
         <?php
-        $cashTotal = 0; $bankTotal = 0; $ccTotal = 0;
+        $cashTotal = 0; 
+        $bankAssets = 0; 
+        $totalLiabilities = 0;
+        
         foreach($wallets as $w) {
-            if($w['wallet_type'] == 'CASH') $cashTotal += $w['balance'];
-            if($w['wallet_type'] == 'BANK_ACCOUNT') $bankTotal += $w['balance'];
-            if($w['wallet_type'] == 'CREDIT_CARD') $ccTotal += $w['balance'];
+            $bal = (float)$w['balance'];
+            if($w['wallet_type'] == 'CASH') {
+                $cashTotal += $bal;
+            } elseif($w['wallet_type'] == 'BANK_ACCOUNT') {
+                if($bal > 0) $bankAssets += $bal;
+                else $totalLiabilities += abs($bal);
+            } elseif($w['wallet_type'] == 'CREDIT_CARD') {
+                if($bal < 0) $totalLiabilities += abs($bal);
+                else $bankAssets += $bal; // Artı bakiyeli kartlar mevduat sayılır
+            }
         }
         ?>
         <div class="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 rounded-2xl text-white shadow-lg shadow-emerald-500/20">
@@ -81,14 +90,14 @@ include __DIR__ . '/../../views/layout/header.php';
                 <span class="p-2 bg-white/20 rounded-lg material-symbols-outlined">account_balance</span>
                 <span class="text-[10px] font-bold uppercase tracking-wider opacity-80">Banka Mevduat</span>
             </div>
-            <div class="text-3xl font-black"><?php echo number_format($bankTotal, 2); ?> ₺</div>
+            <div class="text-3xl font-black"><?php echo number_format($bankAssets, 2); ?> ₺</div>
         </div>
         <div class="bg-gradient-to-br from-rose-500 to-pink-600 p-6 rounded-2xl text-white shadow-lg shadow-rose-500/20">
             <div class="flex justify-between items-start mb-4">
                 <span class="p-2 bg-white/20 rounded-lg material-symbols-outlined">credit_card</span>
-                <span class="text-[10px] font-bold uppercase tracking-wider opacity-80">Kart Borçları</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider opacity-80">Toplam Borçlar</span>
             </div>
-            <div class="text-3xl font-black"><?php echo number_format($ccTotal, 2); ?> ₺</div>
+            <div class="text-3xl font-black"><?php echo number_format($totalLiabilities, 2); ?> ₺</div>
         </div>
     </div>
 

@@ -275,6 +275,36 @@ switch ($path) {
         require __DIR__ . '/src/controllers/api/update_job_status.php';
         break;
 
+    case 'api/post-job-to-finance':
+        require_login();
+        require __DIR__ . '/src/controllers/api/post_job_to_finance.php';
+        break;
+
+    case 'api/delete-job':
+        require_login();
+        require __DIR__ . '/src/controllers/api/delete_job.php';
+        break;
+
+    case 'api/edit-job':
+        require_login();
+        require __DIR__ . '/src/controllers/api/edit_job.php';
+        break;
+
+    case 'api/delete-job-material':
+        require_login();
+        require __DIR__ . '/src/controllers/api/delete_job_material.php';
+        break;
+
+    case 'api/edit-job-material':
+        require_login();
+        require __DIR__ . '/src/controllers/api/edit_job_material.php';
+        break;
+
+    case 'api/analyze-job-material-image':
+        require_login();
+        require __DIR__ . '/src/controllers/api/analyze_job_material_image.php';
+        break;
+
     // --- FAZ 2-5: Akıllı Stok Yönetimi Rotaları ---
     
     case 'invoice/upload':

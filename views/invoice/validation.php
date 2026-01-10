@@ -58,6 +58,10 @@ $suppliers = $suppliers ?? [];
     <!-- Main Content -->
     <form action="<?php echo public_url('invoice/store'); ?>" method="POST" id="invoiceForm">
         <input type="hidden" name="folder_id" value="<?php echo $invoiceData['id'] ?? ''; ?>">
+        <input type="hidden" id="ai_supplier_name" value="<?php echo htmlspecialchars($invoiceData['supplier_name'] ?? ''); ?>">
+        <input type="hidden" id="ai_supplier_tax_id" value="<?php echo htmlspecialchars($invoiceData['supplier_tax_id'] ?? ''); ?>">
+        <input type="hidden" id="ai_buyer_name" value="<?php echo htmlspecialchars($invoiceData['buyer_name'] ?? ''); ?>">
+        <input type="hidden" id="ai_buyer_tax_id" value="<?php echo htmlspecialchars($invoiceData['buyer_tax_id'] ?? ''); ?>">
         
         <!-- Top Bar: Invoice Meta & Type Selection -->
         <div class="bg-white dark:bg-card-dark rounded-xl shadow-lg border border-gray-100 dark:border-gray-700/50 p-6 mb-6">
@@ -114,13 +118,39 @@ $suppliers = $suppliers ?? [];
                         <!-- Datalist for autocomplete -->
                         <datalist id="suppliersList">
                             <?php foreach($suppliers as $sup): ?>
-                                <option value="<?php echo htmlspecialchars($sup['name']); ?>">
+                                <option value="<?php echo htmlspecialchars($sup['name']); ?>" data-id="<?php echo $sup['id']; ?>" data-tax="<?php echo $sup['tax_id']; ?>">
                             <?php endforeach; ?>
                         </datalist>
                         <input type="hidden" name="supplier_tax_id" value="<?php echo htmlspecialchars($invoiceData['supplier_tax_id'] ?? ''); ?>">
                         
                         <input type="hidden" name="entity_type" id="entityTypeInput" value="supplier">
+                        <!-- USER FIX: Explicit Entity ID -->
+                        <input type="hidden" name="entity_id" id="entityIdInput" value="">
                     </div>
+
+                    <script>
+                    const suppliersData = <?php echo json_encode(array_map(function($s){ return ['id'=>$s['id'], 'name'=>$s['name'], 'tax_id'=>$s['tax_id']]; }, $suppliers)); ?>;
+                    
+                    document.getElementById('supplierNameInput').addEventListener('input', function(e) {
+                         const val = this.value;
+                         const match = suppliersData.find(s => s.name === val);
+                         if (match) {
+                             document.getElementById('entityIdInput').value = match.id;
+                             document.querySelector('input[name="supplier_tax_id"]').value = match.tax_id || '';
+                         } else {
+                             document.getElementById('entityIdInput').value = '';
+                         }
+                    });
+
+                    // Init on load
+                    window.addEventListener('load', function() {
+                        const val = document.getElementById('supplierNameInput').value;
+                        const match = suppliersData.find(s => s.name === val);
+                        if (match) {
+                             document.getElementById('entityIdInput').value = match.id;
+                        }
+                    });
+                    </script>
 
                     <!-- Staff Input Group (Hidden by default) -->
                     <div id="staffInputGroup" class="relative group hidden">
@@ -266,7 +296,7 @@ $suppliers = $suppliers ?? [];
                                     </div>
                                 </td>
                                 <td class="p-2">
-                                    <input type="number" step="0.01" name="items[<?php echo $index; ?>][quantity]" 
+                                    <input type="number" step="0.0001" name="items[<?php echo $index; ?>][quantity]" 
                                            class="row-qty w-full text-right bg-transparent border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 focus:border-primary focus:ring-1 outline-none" 
                                            value="<?php echo $item['quantity']; ?>" onchange="calculateTotals()">
                                 </td>
@@ -287,23 +317,28 @@ $suppliers = $suppliers ?? [];
                                     </select>
                                 </td>
                                 <td class="p-2 relative">
-                                    <input type="number" step="0.01" name="items[<?php echo $index; ?>][unit_price]" 
+                                    <input type="number" step="0.0001" name="items[<?php echo $index; ?>][unit_price]" 
                                            class="row-price w-full text-right bg-transparent border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 focus:border-primary focus:ring-1 outline-none font-bold" 
                                            value="<?php echo $item['unit_price']; ?>" onchange="calculateTotals()">
                                      <span class="absolute right-8 top-2 text-xs text-gray-400 pointer-events-none">₺</span>
                                 </td>
                                 <td class="p-2">
-                                    <input type="number" step="1" min="0" max="100" name="items[<?php echo $index; ?>][tax_rate]" 
+                                    <input type="number" step="0.01" min="0" max="100" name="items[<?php echo $index; ?>][tax_rate]" 
                                            class="row-tax w-full text-center bg-transparent border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 focus:border-primary focus:ring-1 outline-none text-xs" 
                                            value="<?php echo $item['tax_rate'] ?? 20; ?>" onchange="calculateTotals()">
                                 </td>
                                 <td class="p-2 text-right font-medium row-total">
-                                    <?php echo number_format($item['total_price'] ?? ($item['quantity'] * $item['unit_price']), 2, ',', '.'); ?> ₺
+                                    <?php echo number_format($item['total_price'] ?? ($item['quantity'] * $item['unit_price']), 4, ',', '.'); ?> ₺
                                 </td>
                                 <td class="p-2 text-center">
-                                    <button type="button" onclick="removeRow(this)" class="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50">
-                                        <span class="material-symbols-outlined text-[18px]">delete</span>
-                                    </button>
+                                    <div class="flex items-center gap-1">
+                                        <button type="button" onclick="calculateFromTotal(this)" class="text-blue-500 hover:text-blue-700 transition-colors p-1 rounded-full hover:bg-blue-50" title="Toplamdan Birim Fiyat Hesapla">
+                                            <span class="material-symbols-outlined text-[18px]">calculate</span>
+                                        </button>
+                                        <button type="button" onclick="removeRow(this)" class="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50" title="Satırı Sil">
+                                            <span class="material-symbols-outlined text-[18px]">delete</span>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -438,15 +473,9 @@ function calculateTotals() {
         // Row total (Net)
         const rowNet = qty * price;
         const rowTax = rowNet * (taxRate / 100);
-        const rowTotal = rowNet + rowTax;
         
-        // Update row total display (Net Amount usually shown, but maybe Total is better)
-        // Let's show Row Total (Inc. Tax) or Net? Usually Invoice Lines show Net Total.
-        // But the input asked for Discounted Price.
-        // Let's go with: Price is Net. Total is Net. Tax is calculated globally or per line.
-        // Let's display Net Total in row for clarity.
-        
-        row.querySelector('.row-total').textContent = rowNet.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+        // Update row total display (Showing the row total including tax with 4 decimals)
+        row.querySelector('.row-total').textContent = (rowNet + rowTax).toLocaleString('tr-TR', {minimumFractionDigits: 4, maximumFractionDigits: 4}) + ' ₺';
         
         subTotal += rowNet;
         totalTax += rowTax;
@@ -454,12 +483,14 @@ function calculateTotals() {
 
     grandTotal = subTotal + totalTax;
 
-    document.getElementById('subTotalDisplay').textContent = subTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
-    document.getElementById('totalTaxDisplay').textContent = totalTax.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
-    document.getElementById('grandTotalDisplay').textContent = grandTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+    document.getElementById('subTotalDisplay').textContent = subTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 4}) + ' ₺';
+    document.getElementById('totalTaxDisplay').textContent = totalTax.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 4}) + ' ₺';
     
-    // Update hidden input for form submission
-    document.getElementById('totalAmountInput').value = grandTotal.toFixed(2);
+    // Final Grand Total for display can be 2 decimals, but we send the precise one to avoid losing cents
+    document.getElementById('grandTotalDisplay').textContent = grandTotal.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ₺';
+    
+    // Update hidden input for form submission - Keeping 4 decimals for DB
+    document.getElementById('totalAmountInput').value = grandTotal.toFixed(4);
 }
 
 function removeRow(btn) {
@@ -468,6 +499,26 @@ function removeRow(btn) {
         calculateTotals();
     } else {
         alert('En az bir kalem kalmalıdır.');
+    }
+}
+
+function calculateFromTotal(btn) {
+    const row = btn.closest('tr');
+    const targetTotal = prompt("Bu satır için hedef KDV DAHİL toplam tutarı girin (Örn: 700):");
+    
+    if (targetTotal !== null && !isNaN(targetTotal)) {
+        const qty = parseFloat(row.querySelector('.row-qty').value) || 1;
+        const taxRate = parseFloat(row.querySelector('.row-tax').value) || 0;
+        
+        // Total = (Qty * UnitPrice) * (1 + TaxRate/100)
+        // UnitPrice = Total / (1 + TaxRate/100) / Qty
+        
+        const unitPrice = parseFloat(targetTotal) / (1 + (taxRate / 100)) / qty;
+        
+        // Use 4 decimals for the unit price to maintain precision
+        row.querySelector('.row-price').value = unitPrice.toFixed(4);
+        
+        calculateTotals();
     }
 }
 
@@ -622,17 +673,33 @@ function updateTypeStyles(type) {
     const desc = document.getElementById('typeDesc');
     const icon = infoBox.querySelector('.material-symbols-outlined');
     const saveBtn = document.querySelector('button[type="submit"]');
+    
+    const supplierNameInput = document.getElementById('supplierNameInput');
+    const supplierTaxInput = document.querySelector('input[name="supplier_tax_id"]');
+    const entityTypeInput = document.getElementById('entityTypeInput');
+    const cariLabel = document.querySelector('label[for="supplierNameInput"]') || document.querySelector('#supplierSection label');
 
     if (type === 'SATIS') {
         infoBox.className = 'p-3 rounded-xl bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-800/30 flex items-center gap-3';
         title.className = 'text-xs font-bold text-rose-800 dark:text-rose-400';
         title.innerText = 'Satış Faturası Modu';
         desc.className = 'text-[10px] text-rose-600 dark:text-rose-500';
-        desc.innerText = 'Ürünler stoktan çıkarılacak, cari alacaklandırılacaktır.';
+        desc.innerText = 'Ürünler stoktan çıkarılacak, cari (Müşteri) borçlandırılacaktır.';
         icon.innerText = 'outbox';
         icon.className = 'p-1.5 bg-rose-500 rounded-lg text-white material-symbols-outlined text-[18px]';
         saveBtn.className = 'w-full md:w-auto px-8 py-3 bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-xl hover:shadow-lg hover:shadow-rose-500/30 font-bold transition-all flex items-center justify-center gap-2 transform active:scale-95';
         saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> Kaydet ve Stoktan Düş';
+        
+        if (cariLabel) cariLabel.innerText = 'Müşteri / Alıcı Cari';
+        entityTypeInput.value = 'customer';
+
+        // Swap to buyer info if it looks like the AI found it
+        const aiBuyerName = document.getElementById('ai_buyer_name').value;
+        const aiBuyerTax = document.getElementById('ai_buyer_tax_id').value;
+        if (aiBuyerName) {
+            supplierNameInput.value = aiBuyerName;
+            supplierTaxInput.value = aiBuyerTax;
+        }
     } else {
         infoBox.className = 'p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3';
         title.className = 'text-xs font-bold text-emerald-800 dark:text-emerald-400';
@@ -643,6 +710,17 @@ function updateTypeStyles(type) {
         icon.className = 'p-1.5 bg-emerald-500 rounded-lg text-white material-symbols-outlined text-[18px]';
         saveBtn.className = 'w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 font-bold transition-all flex items-center justify-center gap-2 transform active:scale-95';
         saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> Kaydet ve Stoklara İşle';
+        
+        if (cariLabel) cariLabel.innerText = 'Tedarikçi / Satan Cari';
+        entityTypeInput.value = 'supplier';
+
+        // Swap back to supplier info
+        const aiSupName = document.getElementById('ai_supplier_name').value;
+        const aiSupTax = document.getElementById('ai_supplier_tax_id').value;
+        if (aiSupName) {
+            supplierNameInput.value = aiSupName;
+            supplierTaxInput.value = aiSupTax;
+        }
     }
 }
 </script>

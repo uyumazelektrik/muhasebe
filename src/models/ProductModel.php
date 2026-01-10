@@ -49,10 +49,32 @@ class ProductModel {
             return $product;
         }
 
-        // 3. Fuzzy search (LIKE)
+        // 3. Extract part code in parentheses if exists (e.g. "... (527-010200-301)")
+        if (preg_match('/\((.*?)\)/', $rawName, $matches)) {
+            $code = trim($matches[1]);
+            // Search by barcode or name containing this code
+            $stmt = $this->pdo->prepare("SELECT * FROM inv_products WHERE barcode = :code OR name LIKE :likeCode LIMIT 1");
+            $stmt->execute([':code' => $code, ':likeCode' => '%' . $code . '%']);
+            if ($product = $stmt->fetch()) {
+                return $product;
+            }
+        }
+
+        // 4. Fuzzy search (LIKE) - Database name contains the query
         $stmt = $this->pdo->prepare("SELECT * FROM inv_products WHERE name LIKE :name LIMIT 1");
         $stmt->execute([':name' => '%' . $rawName . '%']);
-        return $stmt->fetch();
+        if ($product = $stmt->fetch()) {
+            return $product;
+        }
+
+        // 5. Reverse Fuzzy Search - Query contains the database name (AI is more specific than DB)
+        $stmt = $this->pdo->prepare("SELECT * FROM inv_products WHERE :name LIKE CONCAT('%', name, '%') ORDER BY LENGTH(name) DESC LIMIT 1");
+        $stmt->execute([':name' => $rawName]);
+        if ($product = $stmt->fetch()) {
+            return $product;
+        }
+
+        return false;
     }
 
     public function updateCostAndStock($id, $newStock, $newAvgCost, $lastBuyPrice) {

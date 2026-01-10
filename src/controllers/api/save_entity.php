@@ -56,6 +56,36 @@ try {
             WHERE id = ?
         ");
         $stmt->execute([$name, $type, $taxId, $phone, $email, $address, $entityId]);
+
+        // STAFF Sync
+        if ($type === 'staff') {
+            $username = trim($_POST['username'] ?? '');
+            $password = $_POST['password'] ?? '';
+            $role = $_POST['role'] ?? 'personel';
+            $hourlyRate = floatval($_POST['hourly_rate'] ?? 0);
+
+            // Check if user exists
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE entity_id = ?");
+            $stmt->execute([$entityId]);
+            $userId = $stmt->fetchColumn();
+
+            if ($userId) {
+                // Update existing user
+                if (!empty($password)) {
+                    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                    $stmt = $pdo->prepare("UPDATE users SET full_name = ?, username = ?, password = ?, role = ?, hourly_rate = ? WHERE id = ?");
+                    $stmt->execute([$name, $username, $hashedPassword, $role, $hourlyRate, $userId]);
+                } else {
+                    $stmt = $pdo->prepare("UPDATE users SET full_name = ?, username = ?, role = ?, hourly_rate = ? WHERE id = ?");
+                    $stmt->execute([$name, $username, $role, $hourlyRate, $userId]);
+                }
+            } else {
+                // Create new user linked to this entity
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare("INSERT INTO users (entity_id, full_name, username, password, role, hourly_rate) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$entityId, $name, $username, $hashedPassword, $role, $hourlyRate]);
+            }
+        }
         
         $pdo->commit();
         
@@ -74,7 +104,7 @@ try {
             }
         }
         
-        // Insert entity (balance is 0 by default, it will be updated via updateAssetBalance)
+        // Insert entity
         $stmt = $pdo->prepare("
             INSERT INTO inv_entities (name, type, tax_id, phone, email, address) 
             VALUES (?, ?, ?, ?, ?, ?)
@@ -82,6 +112,22 @@ try {
         $stmt->execute([$name, $type, $taxId, $phone, $email, $address]);
         
         $newEntityId = $pdo->lastInsertId();
+
+        // STAFF Sync
+        if ($type === 'staff') {
+            $username = trim($_POST['username'] ?? '');
+            $password = $_POST['password'] ?? '';
+            $role = $_POST['role'] ?? 'personel';
+            $hourlyRate = floatval($_POST['hourly_rate'] ?? 0);
+
+            if (empty($username) || empty($password)) {
+                throw new Exception('Personel tipi için Kullanıcı Adı ve Şifre zorunludur.');
+            }
+
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("INSERT INTO users (entity_id, full_name, username, password, role, hourly_rate) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$newEntityId, $name, $username, $hashedPassword, $role, $hourlyRate]);
+        }
         
         // If there's an initial balance, use the new model method to keep all tables in sync
         if ($initialBalance != 0) {

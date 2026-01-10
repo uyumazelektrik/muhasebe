@@ -26,6 +26,15 @@ try {
     require_once __DIR__ . '/../../Models/EntityModel.php';
     $entityModel = new EntityModel($pdo);
 
+    $entity = $entityModel->find($id);
+    if ($entity && $entity['type'] === 'staff') {
+        // Personel ise ilişkili kullanıcıyı da sil (Veya pasife çek)
+        // Burada yapıyı bozmamak için DELETE yerine users tablosuna da bir is_active eklenebilirdi 
+        // ama mevcut sistem DELETE üzerine kurulu.
+        $stmt = $pdo->prepare("DELETE FROM users WHERE entity_id = ?");
+        $stmt->execute([$id]);
+    }
+
     $success = $entityModel->delete($id);
 
     if ($success) {

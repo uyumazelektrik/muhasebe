@@ -32,6 +32,13 @@ try {
         throw new Exception("İşlem bulunamadı");
     }
 
+    // DEBUG LOGSTART
+    $logMsg = "--------------------------------\n";
+    $logMsg .= "Edit Trans ID: " . $id . " | Date: " . date('Y-m-d H:i:s') . "\n";
+    $logMsg .= "Old Trans: " . print_r($oldTrans, true) . "\n";
+    file_put_contents(__DIR__ . '/../../../debug_stock.txt', $logMsg, FILE_APPEND);
+
+
     $newTotalAmount = $oldTrans['amount']; // Varsayılan eski tutar
 
     // 2. Eğer kalemler (items) gönderildiyse ve işlem tipi FATURA ise stokları güncelle
@@ -53,26 +60,65 @@ try {
              // Şimdilik sadece document_no varsa işlem yapalım.
         } else {
             // A.1. Eski stokları geri al (Revert)
-            $stmtMoves = $pdo->prepare("SELECT * FROM inv_movements WHERE document_no = ? AND entity_id = ?");
-            $stmtMoves->execute([$oldDocNo, $oldTrans['entity_id']]);
+            // NOT: Sadece document_no ile siliyoruz çünkü entity_id bazen NULL kalmış olabilir (eski hatalardan).
+            // Document No zaten unique olmalı (en azından o fatura için).
+            $stmtMoves = $pdo->prepare("SELECT * FROM inv_movements WHERE document_no = ?");
+            $stmtMoves->execute([$oldDocNo]);
             $oldMoves = $stmtMoves->fetchAll(PDO::FETCH_ASSOC);
 
+            // DEBUG LOG
+            file_put_contents(__DIR__ . '/../../../debug_stock.txt', "Old Moves Found (" . count($oldMoves) . "): " . print_r($oldMoves, true) . "\n", FILE_APPEND);
+
+
             foreach ($oldMoves as $move) {
-                // Alış faturası olduğu için stok artmıştı. Şimdi düşmeliyiz.
-                // updateCostAndStock kullanmak yerine manuel düşelim çünkü maliyet/stok geri alma karmaşıktır.
-                // Sadece miktarı stoktan düşelim.
-                $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity - ? WHERE id = ?")
-                    ->execute([$move['quantity'], $move['product_id']]);
+                // Hareketi tersine çevir
+                $mQty = floatval($move['quantity']);
+                $moveType = $move['type'];
+
+                // Yönü algıla
+                $isOriginalSale = false;
+
+                if (in_array($moveType, ['sale', 'out_invoice', 'production_out', 'return_to_supplier'])) {
+                    $isOriginalSale = true;
+                } elseif (in_array($moveType, ['purchase', 'in_invoice', 'stock_in'])) {
+                    $isOriginalSale = false;
+                } else {
+                    // Type boş veya bilinmiyor ise, İşlem Tutarının yönüne bak.
+                    // Tutar pozitif ise SATIŞ (Stoktan düşmüştür), Negatif ise ALIŞ (Stoka girmiştir).
+                    if ($oldTrans['amount'] >= 0) {
+                        $isOriginalSale = true;
+                    } else {
+                        $isOriginalSale = false;
+                    }
+                }
+                
+                if ($isOriginalSale) {
+                    // Stoktan çıkmıştı, geri ekle (+)
+                    $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity + ? WHERE id = ?")
+                        ->execute([$mQty, $move['product_id']]);
+                } else {
+                    // Stoka girmişti (alış), geri al (düş, -)
+                    $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity - ? WHERE id = ?")
+                        ->execute([$mQty, $move['product_id']]);
+                }
             }
 
             // A.2. Eski hareketleri sil
-            $pdo->prepare("DELETE FROM inv_movements WHERE document_no = ? AND entity_id = ?")
-                ->execute([$oldDocNo, $oldTrans['entity_id']]);
+            $pdo->prepare("DELETE FROM inv_movements WHERE document_no = ?")
+                ->execute([$oldDocNo]);
         }
 
         // B. Yeni Kalemleri İşle
         $calculatedTotal = 0;
         
+        // İşlem Yönünü Belirle
+        // Eğer amount pozitif ise SATIŞ (out_invoice), negatif ise ALIŞ (in_invoice) varsayıyoruz.
+        // inv_entity_transactions tablosunda genellikle Satış=+ (Borç), Alış=- (Alacak) veya tam tersi kurgu olsa da
+        // edit logic'in aşağısında (Line 138) negatif amount kontrolü var.
+        
+        $isSale = ($oldTrans['amount'] >= 0); 
+        $newKdvIncluded = isset($data['tax_included']) ? (bool)$data['tax_included'] : (bool)($oldTrans['tax_included'] ?? 0);
+
         foreach ($items as $item) {
             $productId = $item['product_id'];
             $qty = floatval($item['quantity']);
@@ -80,25 +126,29 @@ try {
             $total = $qty * $price;
             $calculatedTotal += $total;
 
-            // Stok ekle
-            $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity + ? WHERE id = ?")
+            // Stok Güncelleme
+            if ($isSale) {
+                // Satış: Stok Düş
+                 $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity - ? WHERE id = ?")
                 ->execute([$qty, $productId]);
+                $moveType = 'out_invoice';
+            } else {
+                // Alış: Stok Ekle
+                 $pdo->prepare("UPDATE inv_products SET stock_quantity = stock_quantity + ? WHERE id = ?")
+                ->execute([$qty, $productId]);
+                $moveType = 'in_invoice';
+            }
             
             // Yeni hareket kaydı
-            // NOT: Maliyet güncellemesi (Avg Cost) burada yapılmıyor karmaşıklığı önlemek için.
-            // Sadece stok miktarı güncelleniyor.
-            
             $moveStmt = $pdo->prepare("
                 INSERT INTO inv_movements (product_id, entity_id, type, quantity, unit_price, prev_stock, new_stock, document_no, description, created_at)
-                VALUES (?, ?, 'in_invoice', ?, ?, 0, 0, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
             ");
-            // prev_stock ve new_stock'u doğru hesaplamak için query atmak lazım ama performans için şimdilik 0 geçiyorum veya
-            // basitçe:
-            // Bu sadece log amaçlıdır. Kritik olan inv_products tablosudur.
             
             $moveStmt->execute([
                 $productId,
                 $oldTrans['entity_id'],
+                $moveType,
                 $qty,
                 $price,
                 $docNo, // Yeni Document No
@@ -107,35 +157,87 @@ try {
             ]);
         }
 
-        // C. Yeni Toplam Tutar
-        // Alış faturası şirketin borcunu artırır (Bakiyesi negatifleşir mi? Hayır, Cari hesabın alacağı artar.)
-        // System logic: 
-        // updateBalance(-amount) yapılmıştı (ödeme yapılmadıysa). Yani balance -1555 olmuştu.
-        // Demek ki amount transaction'da NEGATİF saklanıyor olabilir mi?
+        // C. Yeni Toplam Tutar Hesaplama
+        // Items'dan gelen toplam: calculatedTotal (Bu ürünlerin toplam fiyatıdır)
         
-        // Statement.php'de: $isDebit = $trans['amount'] < 0; // Tutar negatifse şirket borçlanmış (cari alacaklı)
-        // Yani Alış Faturası tutarı EKSİ (-) olarak kaydediliyor.
+        $taxIncluded = isset($data['tax_included']) ? (bool)$data['tax_included'] : (bool)($oldTrans['tax_included'] ?? 0);
+        $taxRate = isset($data['tax_rate']) ? floatval($data['tax_rate']) : floatval($oldTrans['tax_rate'] ?? 0);
+        $discountAmount = isset($data['discount_amount']) ? floatval($data['discount_amount']) : floatval($oldTrans['discount_amount'] ?? 0);
+
+        // Matrah (Veya Brüt Toplam) = Kalemlerin Toplamı
+        $subTotal = $calculatedTotal; 
         
-        $newTotalAmount = -1 * abs($calculatedTotal); // Tutar her zaman eksi olmalı alış faturası için
+        // İndirim düşülür (Genellikle matrahtan düşülür)
+        $taxBase = $subTotal - $discountAmount;
+
+        if ($taxIncluded) {
+            // KDV Dahil ise, hesaplanan toplam zaten Son Toplamdır.
+            // Vergi içinden ayrıştırılır.
+            $newTotalAmount = $taxBase;
+            $taxAmount = $newTotalAmount - ($newTotalAmount / (1 + ($taxRate / 100)));
+        } else {
+            // KDV Hariç ise, üzerine eklenir.
+            $taxAmount = $taxBase * ($taxRate / 100);
+            $newTotalAmount = $taxBase + $taxAmount;
+        }
+
+        // Alış faturası tutarı negatiftir, Satış faturası pozitiftir.
+        // Yönü koru
+        if ($oldTrans['amount'] < 0) {
+            $newTotalAmount = -1 * abs($newTotalAmount);
+        } else {
+            $newTotalAmount = abs($newTotalAmount);
+        }
+    }
+    
+    // YENİ EK: Eğer sadece başlık verileri (KDV, İndirim) güncelleniyorsa ve kalemler gelmediyse?
+    // Bu senaryoda eski amount üzerinden geri hesaplama yapmak zor olabilir.
+    // Ancak edit modalında genellikle kalemler de gönderilir veya sadece başlık editleniyorsa amount manuel gönderilir.
+    // Şimdilik sadece items varsa hesaplama yaptık. Items yoksa ve amount geldiyse:
+    
+    if ($items === null && isset($data['amount'])) {
+         // Manuel tutar güncellemesi (Hızlı İşlem vs)
+         $newTotalAmount = floatval($data['amount']);
+         
+         // Tip kontrolü yerine mevcut yönü koru
+         if ($oldTrans['amount'] < 0) {
+             $newTotalAmount = -1 * abs($newTotalAmount);
+         } else {
+             $newTotalAmount = abs($newTotalAmount); 
+         }
+         
+         // Eğer yön değiştirmek isteniyorsa (örn: yanlışlıkla borç yazıldı, alacak olmalıydı)
+         // Bu API şu an buna izin vermiyor, sadece büyüklüğü değiştiriyor.
+         // Kullanıcı silip tekrar eklemeli veya UI'da +/- seçimi olmalı. 
+         // Şimdilik sadece tutar düzeltmesi varsayıyoruz.
+
+         // Metadata güncelle
+         $taxIncluded = isset($data['tax_included']) ? (bool)$data['tax_included'] : (bool)($oldTrans['tax_included'] ?? 0);
+         $taxRate = isset($data['tax_rate']) ? floatval($data['tax_rate']) : floatval($oldTrans['tax_rate'] ?? 0);
+         $discountAmount = isset($data['discount_amount']) ? floatval($data['discount_amount']) : floatval($oldTrans['discount_amount'] ?? 0);
+         $taxAmount = isset($data['tax_amount']) ? floatval($data['tax_amount']) : floatval($oldTrans['tax_amount'] ?? 0);
     }
 
     // 3. Cari İşlemi Güncelle
     // Hızlı işlem ise ve yeni tutar geldiyse
     if ($oldTrans['type'] !== 'fatura' && isset($data['amount'])) {
+        // ... (Mevcut kod)
+        // Burayı olduğu gibi bırakıyoruz, sadece tax alanlarını ekliyoruz update sorgusuna
         $assetAmount = floatval($data['amount']);
         $newRate = floatval($data['exchange_rate'] ?? 1.0);
         
-        // Yönü belirle (Tahsilat negatif, Ödeme pozitif)
+        // Yönü belirle (Eski kod bloğu)
         if ($oldTrans['type'] === 'tahsilat') {
             $assetAmount = -abs($assetAmount);
-        } else {
+        } elseif ($oldTrans['type'] === 'odeme') {
             $assetAmount = abs($assetAmount);
+        } else {
+            $assetAmount = $data['amount']; 
         }
         
         $newTotalAmount = $assetAmount * $newRate;
         
-        // Varlık bakiyesini güncelle (inv_entity_balances)
-        // Önce eskiyi çıkar, yeniyi ekle
+        // Varlık bakiyesini güncelle
         if ($oldTrans['asset_type']) {
             $pdo->prepare("UPDATE inv_entity_balances SET amount = amount - ? WHERE entity_id = ? AND asset_type = ?")
                 ->execute([$oldTrans['asset_amount'], $oldTrans['entity_id'], $oldTrans['asset_type']]);
@@ -144,11 +246,13 @@ try {
                 ->execute([$oldTrans['entity_id'], $oldTrans['asset_type'], $assetAmount, $assetAmount]);
         }
         
-        $updateStmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ?, asset_amount = ?, exchange_rate = ? WHERE id = ?");
-        $updateStmt->execute([$desc, $docNo, $date, $newTotalAmount, $assetAmount, $newRate, $id]);
+        $updateStmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ?, asset_amount = ?, exchange_rate = ?, tax_rate = ?, tax_included = ?, discount_amount = ?, tax_amount = ? WHERE id = ?");
+        $updateStmt->execute([$desc, $docNo, $date, $newTotalAmount, $assetAmount, $newRate, $taxRate, $taxIncluded ? 1 : 0, $discountAmount, $taxAmount ?? 0, $id]);
+
     } else {
-        $stmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ? WHERE id = ?");
-        $stmt->execute([$desc, $docNo, $date, $newTotalAmount, $id]);
+        // Fatura güncellemesi
+        $stmt = $pdo->prepare("UPDATE inv_entity_transactions SET description = ?, document_no = ?, transaction_date = ?, amount = ?, tax_rate = ?, tax_included = ?, discount_amount = ?, tax_amount = ? WHERE id = ?");
+        $stmt->execute([$desc, $docNo, $date, $newTotalAmount, $taxRate, $taxIncluded ? 1 : 0, $discountAmount, $taxAmount ?? 0, $id]);
     }
 
     // 4. Ana (TL) Bakiye Düzeltmesi
