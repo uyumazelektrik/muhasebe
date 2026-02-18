@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Redirect Assets with capital A to lowercase
+# We check if the request matches "Assets/" specifically to avoid loops if needed
+RewriteRule ^Assets/(.*)$ assets/$1 [R=301,L,NC]
+
+# If not a file or directory, route through CodeIgniter
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php/$1 [L]
